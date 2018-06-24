@@ -1,0 +1,34 @@
+;with tab(session_id, host_name, login_name, totalalocadomb, text)
+as(
+select A.session_id,B.host_name, B.Login_Name , 
+	(user_objects_alloc_page_count + internal_objects_alloc_page_count)*1.0/128 as totalalocadoMB,
+	D.Text
+from sys.dm_db_session_space_usage A
+	 JOIN sys.dm_exec_sessions B  ON A.session_id = B.session_id 
+	JOIN sys.dm_exec_connections C ON C.session_id = B.session_id 
+	CROSS APPLY sys.dm_exec_sql_text(C.most_recent_sql_handle) As D
+where A.session_id > 50
+	and (user_objects_alloc_page_count + internal_objects_alloc_page_count)*1.0/128 > 100 -- > 100 MB
+ )
+select * from tab
+union all
+select '','Querys Completadas','TOTAL ALOCADO',sum(totalalocadomb),''
+from tab
+ORDER BY totalalocadomb DESC
+
+;with tab(session_id, host_name, login_name, totalalocadomb, text)
+as(
+SELECT A.session_id,B.host_name, B.Login_Name,(user_objects_alloc_page_count + internal_objects_alloc_page_count)*1.0/128 as TotalalocadoMB,
+	D.Text
+FROM sys.dm_db_task_space_usage A
+	 JOIN sys.dm_exec_sessions B  ON A.session_id = B.session_id 
+	JOIN sys.dm_exec_connections C ON C.session_id = B.session_id 
+	CROSS APPLY sys.dm_exec_sql_text(C.most_recent_sql_handle) As D
+where A.session_id > 50
+	and (user_objects_alloc_page_count + internal_objects_alloc_page_count)*1.0/128 > 100 -- > 100 MB
+ )
+select * from tab
+union all
+select '','Querys Rodando','TOTAL ALOCADO',sum(totalalocadomb),''
+from tab
+ORDER BY totalalocadomb DESC
