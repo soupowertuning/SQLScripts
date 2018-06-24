@@ -1,0 +1,3 @@
+-- Para dar uma melhor visão, limpando o wait stats...
+DBCC SQLPERF ('sys.dm_os_wait_stats', CLEAR)
+go
