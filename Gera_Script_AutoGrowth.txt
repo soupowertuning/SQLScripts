@@ -24,8 +24,8 @@ SELECT
 	(SF.size/128.0),
     SF.name,  
     CASE SF.status & 0x100000  
-    WHEN 1048576 THEN 'Percentage'  
-    WHEN 0 THEN 'MB'  
+			WHEN 1048576 THEN 'Percentage'  
+			WHEN 0 THEN 'MB'  
     END AS 'GROWTH Option'  
 FROM SYS.SYSALTFILES SF  
 JOIN SYS.DATABASES SD ON SD.database_id = SF.dbid
@@ -57,7 +57,7 @@ BEGIN
 	PRINT 'USE master'+ CHAR(13) + CHAR(10) +'GO' 
 
 	OPEN db_cursor  
-	FETCH NEXT FROM db_cursor INTO @dbid,@name,@typeFile,@maxSizeFile,@sizeFile,@vfilename,@vgrowthoption    
+	FETCH NEXT FROM db_cursor INTO @dbid,@name,@typeFile,@maxSizeFile,@sizeFile,@vFileName,@vGrowthOption    
 	WHILE @@FETCH_STATUS = 0  
 	BEGIN  
 		PRINT	'ALTER DATABASE '+ '[' + @name + ']' +
@@ -83,13 +83,14 @@ BEGIN
 				END
 				+
 				CASE 
-					WHEN @maxSizeFile <> -1 THEN ', MAXSIZE = UNLIMITED'
+					WHEN @maxSizeFile <> -1 THEN ', MAXSIZE = UNLIMITED '
+					ELSE ' '
 				END
 				+ ' )'
 				+ CHAR(13) + CHAR(10) + 'GO'
 			
   
-	FETCH NEXT FROM db_cursor INTO @dbid,@name,@typeFile,@maxSizeFile,@sizeFile,@vfilename,@vgrowthoption    
+	FETCH NEXT FROM db_cursor INTO @dbid,@name,@typeFile,@maxSizeFile,@sizeFile,@vFileName,@vGrowthOption    
 	END  
 	CLOSE db_cursor -- Closing the curson  
 	DEALLOCATE db_cursor  -- deallocating the cursor  
