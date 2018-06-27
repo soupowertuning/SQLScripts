@@ -27,8 +27,8 @@ SELECT
 			WHEN 1048576 THEN 'Percentage'  
 			WHEN 0 THEN 'MB'  
     END AS 'GROWTH Option'  
-FROM SYS.SYSALTFILES SF  
-JOIN SYS.DATABASES SD ON SD.database_id = SF.dbid
+FROM sys.sysaltfiles SF  
+JOIN sys.databases SD ON SD.database_id = SF.dbid
 WHERE
 	(SF.growth = 10 AND (SF.status & 0x100000 = 1048576))
 	OR
@@ -51,7 +51,7 @@ BEGIN
 	DECLARE @Query VARCHAR(max) -- Variable to store dynamic sql  
 	
 	DECLARE db_cursor CURSOR FOR  
-	SELECT Database_id,Nm_Database, group_id, MaxSize, size_MB, vfilename,vgrowthoption  
+	SELECT Database_id,Nm_Database, group_id, MaxSize, size_MB, vFileName,vGrowthOption  
 	FROM #ConfigAutoGrowth  
 	
 	PRINT 'USE master'+ CHAR(13) + CHAR(10) +'GO' 
