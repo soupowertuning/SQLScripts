@@ -86,7 +86,7 @@ BEGIN
 					WHEN @maxSizeFile <> -1 THEN ', MAXSIZE = UNLIMITED '
 					ELSE ' '
 				END
-				+ ' )'
+				+ ')'
 				+ CHAR(13) + CHAR(10) + 'GO'
 			
   
