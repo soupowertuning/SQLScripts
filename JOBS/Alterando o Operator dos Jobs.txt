@@ -1,3 +1,12 @@
+--Conferindo os Operators existentes
+ select O.name,o.email_address,*
+ FROM msdb.dbo.sysjobs A
+ LEFT JOIN msdb.dbo.sysoperators O
+ ON A.notify_email_operator_id = O.[id]
+ where A.enabled = 1
+ order by O.name
+
+
 --Check to see if operator exists currently:
  SELECT [name], [id], [enabled]
  FROM msdb.dbo.sysoperators
