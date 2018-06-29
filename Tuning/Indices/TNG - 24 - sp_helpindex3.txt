@@ -1,0 +1,344 @@
+USE master
+GO
+IF OBJECT_ID('sp_helpindex2', 'P') IS NOT NULL
+BEGIN
+DROP PROCEDURE sp_helpindex2
+END
+IF OBJECT_ID('sp_helpindex3', 'P') IS NOT NULL
+BEGIN
+DROP PROCEDURE sp_helpindex3
+END
+GO
+-- =============================================
+-- Author: Jared Dobson && Greg Wright && http://realsqlguy.blogspot.com/2008/04/include-columns-and-sphelpindex.html
+-- Create date: 09/09/2010
+-- Description: Give me more index information about this table like includes, duplicates etc.
+-- Modification: Now with Index usage stats! :-)
+-- : Greg Wright, add a parameter to specify new fillfactor
+-- : Greg Wright, add a parameter to use existing, or new fillfactor if it doesn't exist
+-- =============================================
+CREATE PROCEDURE [dbo].[sp_helpindex3]
+@objname NVARCHAR(776) -- the table to check for indexes
+, @new_fillfactor INT = NULL -- if a new fillfactor is specified, use it, otherwise use what's there already there
+, @force_new_fillfactor INT = 0 -- 1 = makes it that either New or Existing is included in script result
+AS -- PRELIM
+--IF (@new_fillfactor IS NOT NULL AND @force_fillfactor = 0)
+-- SET @force_fillfactor = 1
+SET nocount ON
+DECLARE
+@objid INT, -- the object id of the table
+@indid SMALLINT, -- the index id of an index
+@groupid INT, -- the filegroup id of an index
+@indname SYSNAME,
+@groupname SYSNAME,
+@status INT,
+@keys NVARCHAR(2126), --Length (16*max_identifierLength)+(15*2)+(16*3)
+@include_cols NVARCHAR(2126),
+@dbname SYSNAME,
+@ignore_dup_key BIT,
+@is_unique BIT,
+@filter_definition NVARCHAR(MAX),
+@is_hypothetical BIT,
+@is_primary_key BIT,
+@is_unique_key BIT,
+@auto_created BIT,
+@no_recompute BIT,
+@last_user_seek DATETIME,
+@last_user_scan DATETIME,
+@last_user_lookup DATETIME,
+@last_user_update DATETIME,
+@user_seeks BIGINT,
+@user_scans BIGINT,
+@user_lookups BIGINT,
+@user_updates BIGINT,
+@orig_fillfactor INT ;
+-- Check to see that the object names are local to the current database.
+SELECT
+@dbname = PARSENAME(@objname, 3)
+IF @dbname IS NULL
+SELECT
+@dbname = DB_NAME()
+ELSE
+IF @dbname <> DB_NAME()
+BEGIN
+RAISERROR(15250,-1,-1)
+RETURN (1)
+END
+-- Check to see the the table exists and initialize @objid.
+SELECT
+@objid = OBJECT_ID(@objname)
+IF @objid IS NULL
+BEGIN
+RAISERROR(15009,-1,-1,@objname,@dbname)
+RETURN (1)
+END
+-- OPEN CURSOR OVER INDEXES (skip stats: bug shiloh_51196)
+DECLARE ms_crs_ind CURSOR local static
+FOR
+SELECT
+i.index_id,
+i.data_space_id,
+i.name,
+i.ignore_dup_key,
+i.is_unique,
+i.filter_definition,
+i.is_hypothetical,
+i.is_primary_key,
+i.is_unique_constraint,
+s.auto_created,
+s.no_recompute,
+[DDIUS].[last_user_seek],
+[DDIUS].[last_user_scan],
+[DDIUS].[last_user_lookup],
+[DDIUS].[last_user_update],
+[DDIUS].[user_seeks],
+[DDIUS].[user_scans],
+[DDIUS].[user_lookups],
+[DDIUS].[user_updates],
+i.fill_factor
+FROM
+sys.indexes i
+JOIN sys.stats s
+ON i.OBJECT_ID = s.OBJECT_ID
+AND i.index_id = s.stats_id
+CROSS APPLY ( SELECT
+MAX([DDI].[last_user_seek]) AS [last_user_seek],
+MAX([DDI].[last_user_scan]) AS [last_user_scan],
+MAX([DDI].[last_user_lookup]) AS [last_user_lookup],
+MAX([DDI].[last_user_update]) AS [last_user_update],
+SUM(ISNULL([DDI].[user_seeks], 0)) AS [user_seeks],
+SUM(ISNULL([DDI].[user_scans], 0)) AS [user_scans],
+SUM(ISNULL([DDI].[user_lookups], 0)) AS [user_lookups],
+SUM(ISNULL([DDI].[user_updates], 0)) AS [user_updates]
+FROM
+[sys].[dm_db_index_usage_stats] AS DDI
+WHERE
+[i].[index_id] = [DDI].[index_id]
+AND [DDI].[object_id] = [i].[object_id]
+GROUP BY
+[DDI].[object_id],
+[DDI].[index_id]
+) AS [DDIUS]
+WHERE
+i.OBJECT_ID = @objid
+OPEN ms_crs_ind
+FETCH ms_crs_ind INTO @indid, @groupid, @indname, @ignore_dup_key,
+@is_unique, @filter_definition, @is_hypothetical, @is_primary_key, @is_unique_key,
+@auto_created, @no_recompute, @last_user_seek, @last_user_scan,
+@last_user_lookup, @last_user_update, @user_seeks, @user_scans,
+@user_lookups, @user_updates, @orig_fillfactor ;
+-- IF NO INDEX, QUIT
+IF @@fetch_status < 0
+BEGIN
+DEALLOCATE ms_crs_ind
+RAISERROR(15472,-1,-1,@objname) -- Object does not have any indexes.
+RETURN (0)
+END
+-- create temp table
+CREATE TABLE #spindtab
+(
+index_name SYSNAME COLLATE database_default
+NOT NULL,
+index_id INT,
+ignore_dup_key BIT,
+is_unique BIT,
+filter_definition NVARCHAR(MAX),
+is_hypothetical BIT,
+is_primary_key BIT,
+is_unique_key BIT,
+auto_created BIT,
+no_recompute BIT,
+groupname SYSNAME COLLATE database_default
+NULL,
+index_keys NVARCHAR(2126) COLLATE database_default
+NOT NULL, -- see @keys above for length descr
+includes NVARCHAR(2126) COLLATE database_default
+NOT NULL,
+last_user_seek DATETIME NULL,
+last_user_scan DATETIME NULL,
+last_user_lookup DATETIME NULL,
+last_user_update DATETIME NULL,
+user_seeks BIGINT,
+user_scans BIGINT,
+user_lookups BIGINT,
+user_updates BIGINT,
+orig_fillfactor INT
+)
+-- Now check out each index, figure out its type and keys and
+-- save the info in a temporary table that we'll print out at the end.
+WHILE @@fetch_status >= 0
+BEGIN
+-- First we'll figure out what the keys are.
+DECLARE
+@i INT,
+@thiskey NVARCHAR(131) -- 128+3
+SELECT
+@keys = INDEX_COL(@objname, @indid, 1),
+@i = 2
+IF ( INDEXKEY_PROPERTY(@objid, @indid, 1, 'isdescending') = 1 )
+SELECT
+@keys = @keys + '(-)'
+SELECT
+@thiskey = INDEX_COL(@objname, @indid, @i)
+IF ( ( @thiskey IS NOT NULL )
+AND ( INDEXKEY_PROPERTY(@objid, @indid, @i, 'isdescending') = 1 ) )
+SELECT
+@thiskey = @thiskey + '(-)'
+WHILE ( @thiskey IS NOT NULL )
+BEGIN
+SELECT
+@keys = @keys + ', ' + @thiskey,
+@i = @i + 1
+SELECT
+@thiskey = INDEX_COL(@objname, @indid, @i)
+IF ( ( @thiskey IS NOT NULL )
+AND ( INDEXKEY_PROPERTY(@objid, @indid, @i,
+'isdescending') = 1 ) )
+SELECT
+@thiskey = @thiskey + '(-)'
+END
+SELECT
+@groupname = NULL
+SELECT
+@groupname = name
+FROM
+sys.data_spaces
+WHERE
+data_space_id = @groupid DECLARE IncludeColsCursor CURSOR
+FOR
+SELECT
+obj.name
+FROM
+sys.index_columns AS col
+INNER JOIN sys.syscolumns AS obj
+ON col.OBJECT_ID = obj.id
+AND col.column_id = obj.colid
+WHERE
+is_included_column = 1
+AND col.OBJECT_ID = @objid
+AND col.index_id = @indid
+ORDER BY
+col.index_column_id
+OPEN IncludeColsCursor
+FETCH IncludeColsCursor INTO @thiskey
+SET @include_cols = ''
+WHILE @@FETCH_STATUS = 0
+BEGIN
+SET @include_cols = @include_cols
++ CASE WHEN @include_cols = '' THEN ''
+ELSE ', '
+END + @thiskey
+FETCH IncludeColsCursor INTO @thiskey
+END
+CLOSE IncludeColsCursor
+DEALLOCATE IncludeColsCursor
+-- INSERT ROW FOR INDEX
+INSERT INTO [#spindtab]
+( [index_name],
+[index_id],
+[ignore_dup_key],
+[is_unique],
+[filter_definition],
+[is_hypothetical],
+[is_primary_key],
+[is_unique_key],
+[auto_created],
+[no_recompute],
+[groupname],
+[index_keys],
+[includes],
+[last_user_seek],
+[last_user_scan],
+[last_user_lookup],
+[last_user_update],
+[user_seeks],
+[user_scans],
+[user_lookups],
+[user_updates],
+[orig_fillfactor] )
+VALUES
+( @indname,
+@indid,
+@ignore_dup_key,
+@is_unique,
+@filter_definition,
+@is_hypothetical,
+@is_primary_key,
+@is_unique_key,
+@auto_created,
+@no_recompute,
+@groupname,
+@keys,
+@include_cols,
+@last_user_seek,
+@last_user_scan,
+@last_user_lookup,
+@last_user_update,
+@user_seeks,
+@user_scans,
+@user_lookups,
+@user_updates,
+@orig_fillfactor )
+-- Next index
+FETCH ms_crs_ind INTO @indid, @groupid, @indname, @ignore_dup_key,
+@is_unique, @filter_definition, @is_hypothetical, @is_primary_key, @is_unique_key,
+@auto_created, @no_recompute, @last_user_seek, @last_user_scan,
+@last_user_lookup, @last_user_update, @user_seeks, @user_scans,
+@user_lookups, @user_updates, @orig_fillfactor ;
+END
+DEALLOCATE ms_crs_ind
+-- DISPLAY THE RESULTS
+SELECT
+'index_name' = index_name,
+'index_id' = index_id,
+'orig_fillfactor' = orig_fillfactor,
+'index_description' = CONVERT(VARCHAR(210), --bits 16 off, 1, 2, 16777216 on, located on group
+CASE WHEN index_id = 1 THEN 'clustered'
+ELSE 'nonclustered'
+END + CASE WHEN ignore_dup_key <> 0 THEN ', ignore duplicate keys'
+ELSE ''
+END + CASE WHEN is_unique <> 0 THEN ', unique'
+ELSE ''
+END + CASE WHEN is_hypothetical <> 0 THEN ', hypothetical'
+ELSE ''
+END
++ CASE WHEN is_primary_key <> 0 THEN ', primary key'
+ELSE ''
+END + CASE WHEN is_unique_key <> 0 THEN ', unique key'
+ELSE ''
+END + CASE WHEN auto_created <> 0 THEN ', auto create'
+ELSE ''
+END
++ CASE WHEN no_recompute <> 0 THEN ', stats no recompute'
+ELSE ''
+END + ' located on ' + groupname),
+'index_keys' = index_keys,
+'include_cols' = includes,
+[filter_definition],
+[last_user_seek],
+[last_user_scan],
+[last_user_lookup],
+[last_user_update],
+[user_seeks],
+[user_scans],
+[user_lookups],
+[user_updates]
+, 'ALTER INDEX [' + index_name + '] ON [' + @objname + '] REBUILD' +
+CASE WHEN ISNULL(@force_new_fillfactor, 0) = 0 AND @new_fillfactor IS NULL THEN ';' -- Don't include the FILLFACTOR for maintenance rebuilds
+WHEN ISNULL(@force_new_fillfactor, 0) = 0 AND orig_fillfactor != 0 THEN -- Don't include the FILLFACTOR for maintenance rebuilds
+' WITH (FILLFACTOR = ' + CONVERT(VARCHAR(15), orig_fillfactor) + ');'
+WHEN ISNULL(@force_new_fillfactor, 0) = 1 THEN -- Don't include the FILLFACTOR for maintenance rebuilds
+' WITH (FILLFACTOR = ' + CONVERT(VARCHAR(15), COALESCE(@new_fillfactor, orig_fillfactor)) + ');'
+ELSE ';'
+END AS Rebuild_Text
+, 'ALTER INDEX [' + index_name + '] ON [' + @objname + '] REORGANIZE;' AS Reorganize_Text
+, 'DROP INDEX [' + @objname + '].[' + index_name + '];' AS Drop_Text
+FROM
+#spindtab
+ORDER BY
+index_id DESC
+RETURN (0)
+-- sp_helpindex3
+GO
+EXEC sp_MS_marksystemobject sp_helpindex3
+GO
