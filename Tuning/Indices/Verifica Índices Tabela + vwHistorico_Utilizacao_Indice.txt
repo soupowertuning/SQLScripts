@@ -81,9 +81,10 @@ from  #Temp_Helpindex B
 	left join #Temp_Include C on B.index_name = C.IndexName
 	left join #Temp_Utilizacao A on  B.index_name = A.Nm_Indice 
 	left join #Temp_TamanhoIndices D on B.index_name = D.IndexName
+where B.index_description <> 'nonclustered, hypothetical'
 order by B.index_keys,A.user_seeks desc
 
-
+/*
 select Nm_Database,Nm_Tabela,Nm_Indice,max(User_Seeks),max(User_Scans),max(User_Lookups),max(User_Updates)
 from Traces..vwHistorico_Utilizacao_Indice A
 where A.Nm_Database = db_name(db_id())
@@ -91,3 +92,4 @@ and Nm_Tabela = @Nm_Tabela
 group by Nm_Database,Nm_Tabela,Nm_Indice
 having max(User_Seeks)+max(User_Scans)+max(User_Lookups) = 0
 order by 7 desc
+*/
