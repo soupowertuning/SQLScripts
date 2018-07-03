@@ -1,0 +1,36 @@
+
+
+	IF (OBJECT_ID('temp..#TEMP_EXPURGO') IS NOT NULL) 
+		DROP TABLE #TEMP_EXPURGO
+
+	CREATE TABLE #TEMP_EXPURGO (CONTROLE datetime)
+
+	INSERT #TEMP_EXPURGO (CONTROLE)
+	select GETDATE()
+	go 1000
+
+	select * from #TEMP_EXPURGO
+-- FAZ O EXPURGO DOS DADOS	
+WHILE EXISTS (SELECT TOP 1 CONTROLE FROM #TEMP_EXPURGO )
+	BEGIN
+		-- INICIA A TRANSAÇÃO
+		BEGIN TRAN	
+					
+			-- EXCLUI OS DADOS DA TABELA DE PRODUCAO
+			DELETE TOP(100) 
+			FROM #TEMP_EXPURGO
+						
+		-- Finaliza a transação
+		IF (@@ERROR = 0)
+		BEGIN
+			COMMIT
+		END
+		ELSE
+		BEGIN
+			ROLLBACK
+		END
+		
+		-- Para diminuir os Locks e deixar os outros processos executarem
+		WAITFOR DELAY '00:00:01'
+END
+
