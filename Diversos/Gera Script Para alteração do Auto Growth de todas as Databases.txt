@@ -1,5 +1,31 @@
 SET NOCOUNT ON
 
+-- Referencia de onde veio esse script. Fizemos algumas adaptações:
+--http://www.sqlservercentral.com/scripts/Administration/99339/
+
+-- OBS!!!!! Garanta que seu SQL Server tem o recuros IFI habilitado. Caso contrário, o crescimento do MDF pode ficar lento.
+
+/*
+
+--Script para conferir o crescimento dos arquivos de dados e logs.
+SELECT   
+    SD.database_id,   
+    SD.name DBName,
+	 SF.name FileName,  
+	(SF.size/128.0) ActualSize,
+	SF.growth ,
+    CASE SF.status & 0x100000  
+			WHEN 1048576 THEN 'Percentage'  
+			WHEN 0 THEN 'MB'  
+    END AS 'GROWTH Option'  ,
+		SF.maxsize
+FROM sys.sysaltfiles SF  
+JOIN sys.databases SD ON SD.database_id = SF.dbid
+WHERE 
+	 state_desc = 'ONLINE'
+	and SD.name NOT IN  ('master','msdb','model','tempdb')
+
+*/
 IF object_id('tempdb..#ConfigAutoGrowth') IS NOT NULL
     DROP TABLE #ConfigAutoGrowth  
 GO    
@@ -27,15 +53,18 @@ SELECT
 			WHEN 1048576 THEN 'Percentage'  
 			WHEN 0 THEN 'MB'  
     END AS 'GROWTH Option'  
-FROM SYS.SYSALTFILES SF  
-JOIN SYS.DATABASES SD ON SD.database_id = SF.dbid
+FROM sys.sysaltfiles SF  
+JOIN sys.databases SD ON SD.database_id = SF.dbid
 WHERE
-	(SF.growth = 10 AND (SF.status & 0x100000 = 1048576))
+	((SF.growth = 10 AND (SF.status & 0x100000 = 1048576))
 	OR
 	(SF.growth = 1 AND (SF.status & 0x100000 = 0))
+	)
+	and state_desc = 'ONLINE'
+	and SD.name NOT IN  ('master','msdb','model','tempdb')
 GO  
 
-DELETE #ConfigAutoGrowth WHERE  Nm_Database IN  ('master','msdb','model') 
+--select * from #ConfigAutoGrowth
 
 --select * from #ConfigAutoGrowth
 IF EXISTS (SELECT TOP 1 * FROM #ConfigAutoGrowth)
@@ -50,8 +79,8 @@ BEGIN
 	DECLARE @vGrowthOption VARCHAR ( max ) -- Growth option  
 	DECLARE @Query VARCHAR(max) -- Variable to store dynamic sql  
 	
-	DECLARE db_cursor CURSOR FOR  
-	SELECT Database_id,Nm_Database, group_id, MaxSize, size_MB, vfilename,vgrowthoption  
+	DECLARE db_cursor CURSOR FAST_FORWARD FOR  
+	SELECT Database_id,Nm_Database, group_id, MaxSize, size_MB, vFileName,vGrowthOption  
 	FROM #ConfigAutoGrowth  
 	
 	PRINT 'USE master'+ CHAR(13) + CHAR(10) +'GO' 
@@ -77,7 +106,7 @@ BEGIN
 										WHEN @sizeFile < 512 THEN '50MB'  
 										WHEN @sizeFile Between 512 and 1024 THEN  '100MB'
 										WHEN @sizeFile Between 1024 and 3072 THEN '500MB'
-										WHEN @sizeFile > 3072 THEN  '1000MB'
+										WHEN @sizeFile > 3072 THEN  '800MB'
 									END
 								)
 				END
@@ -86,7 +115,7 @@ BEGIN
 					WHEN @maxSizeFile <> -1 THEN ', MAXSIZE = UNLIMITED '
 					ELSE ' '
 				END
-				+ ' )'
+				+ ')'
 				+ CHAR(13) + CHAR(10) + 'GO'
 			
   
