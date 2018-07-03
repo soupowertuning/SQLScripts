@@ -1,5 +1,7 @@
 
 /*
+-- LINK PARA BAIXAR O CODIGO DA SP_WHOISACTIVE
+http://whoisactive.com/downloads/
 
 sp_WhoIsActive @get_outer_command = 1
 
