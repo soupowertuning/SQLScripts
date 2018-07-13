@@ -1,0 +1,38 @@
+
+
+create table ##INDICES_BASES( dbname varchar(50),tabela varchar(50),indice varchar(50),coluna varchar(50))
+
+select *,
+	 'CREATE UNIQUE NONCLUSTERED  INDEX I_ATUALIZA on '+Nm_Database+'.dbo.[PALM_ATUALIZA](CONTROLE)WITH(FILLFACTOR=99)'
+from Traces..vwTamanho_Tabela
+where Nm_tabela = 'PALM_ATUALIZA'
+and Dt_Referencia >= '20160909'
+and Nm_database not in (
+select dbname from ##INDICES_BASES)
+order by 3
+
+truncate table ##INDICES_BASES
+
+sp_msforeachdb 
+
+'insert into ##INDICES_BASES
+SELECT "?",
+     TableName = t.name,
+     IndexName = ind.name,
+     
+     ColumnName = col.name     
+FROM 
+     [?].sys.indexes ind 
+INNER JOIN 
+     [?].sys.index_columns ic ON  ind.object_id = ic.object_id and ind.index_id = ic.index_id 
+INNER JOIN 
+    [?]. sys.columns col ON ic.object_id = col.object_id and ic.column_id = col.column_id 
+INNER JOIN 
+     [?].sys.tables t ON ind.object_id = t.object_id 
+WHERE 
+    
+	  t.name = ''PALM_ATUALIZA''
+	 and ic.index_column_id = 1
+	 and col.name = ''CONTROLE''
+ORDER BY 
+     t.name, ind.name, ind.index_id, ic.index_column_id '
