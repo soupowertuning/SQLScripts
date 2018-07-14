@@ -1,0 +1,98 @@
+
+/*
+
+OBS: Executar para cada database que deseja atualizar as estatisticas com mais de 0,005% de alterações
+
+--Caso queira um script com mais opcoes acesse: https://ola.hallengren.com/
+
+Favor incluir uma janela limite no loop para que a rotina se encerre.
+
+*/
+
+CREATE PROCEDURE stpUpdate_Statistics
+AS
+BEGIN	
+
+	-- TRATAMENTO DE LOCK
+	SET LOCK_TIMEOUT 300000		-- Se ficar bloqueado por mais de 5 minutos, aborta.
+
+	IF object_id('tempdb..#Update_Stats') IS NOT NULL DROP TABLE #Update_Stats
+
+	;WITH Tamanho_Tabelas
+	AS (SELECT obj.name,
+          	   prt.rows
+   		FROM sys.objects obj
+       		JOIN sys.indexes idx
+           		ON obj.object_id = idx.object_id
+       		JOIN sys.partitions prt
+           		ON obj.object_id = prt.object_id
+       		JOIN sys.allocation_units alloc
+           		ON alloc.container_id = prt.partition_id
+   		WHERE obj.type = 'U'
+         	  AND idx.index_id IN ( 0, 1 ) --and prt.rows > 1000
+   		GROUP BY obj.name,
+            	 prt.rows)
+
+	SELECT IDENTITY(int,1,1) Id_Estatistica ,
+		'if exists(select null     FROM sys.stats WHERE name = '''
+      	   + REPLACE(A.name, '''', '''''') + ''')
+                                       		UPDATE STATISTICS ' + SCHEMA_NAME(E.schema_id) + '.[' + B.name + '] '
+      	   + '[' + A.name + ']' + ' WITH FULLSCAN' Ds_Comando,
+      	   D.rows,
+      	   C.rowmodctr,
+      	   STATS_DATE(A.object_id, stats_id) AS [StatisticUpdateDate]
+	INTO #Update_Stats
+	FROM sys.stats A
+   		JOIN sys.sysobjects B WITH (NOLOCK)
+       		ON A.object_id = B.id
+   		JOIN sys.sysindexes C WITH (NOLOCK)
+       		ON C.id = B.id
+          	   AND A.name = C.name
+   		JOIN Tamanho_Tabelas D
+       		ON B.name = D.name
+   		JOIN sys.tables E
+       		ON E.object_id = A.object_id
+	WHERE SUBSTRING(B.name, 1, 3) NOT IN ( 'sys', 'dtp' )
+   		AND SUBSTRING(B.name, 1, 1) <> '_' -- elimina tabelas teporárias
+   		AND C.rowmodctr > D.rows * .005
+	ORDER BY D.rows DESC;
+
+	--SELECT * FROM #Update_Stats
+
+ 	declare @Loop int, @Comando nvarchar(4000)
+	set @Loop = 1
+
+	while exists(select top 1 null from #Update_Stats)
+	BEGIN
+    
+
+		---- Se passar de 6 da manha deve terminar a execução automaticamente
+		--IF( (SELECT DATEPART(HOUR, GETDATE())) >= 6 )
+		--BEGIN		
+		--	RETURN
+		--END
+
+		-- PARA CLIENTES GRANDES
+		-- Se passar de 6 da manha deve terminar a execução automaticamente
+		--IF( ( (SELECT DATEPART(WEEKDAY, GETDATE())) <> 1 ) AND  (SELECT DATEPART(HOUR, GETDATE())) >= 6 )
+		--BEGIN		-- SEG A SAB - ATE AS 06 HORAS
+		--	RETURN
+		--END
+		--ELSE IF( ( (SELECT DATEPART(WEEKDAY, GETDATE())) = 1 ) AND  (SELECT DATEPART(HOUR, GETDATE())) >= 21 )
+		--BEGIN		-- DOMINGO - ATE AS 21 HORAS
+		--	RETURN
+		--END
+			
+		select top 1 @Comando = Ds_Comando,@Loop = Id_Estatistica
+		from #Update_Stats		
+		
+		EXECUTE sp_executesql @Comando
+
+		delete from #Update_Stats
+		where Id_Estatistica = @Loop
+
+		set @Loop = @Loop + 1 
+		
+	end
+
+END
