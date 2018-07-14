@@ -11,6 +11,11 @@ OBS: Executar para cada database que deseja desfragmentar os indices
 CREATE PROCEDURE stpManutencao_Indices
 AS
 BEGIN
+
+	-- TRATAMENTO DE LOCK
+	SET LOCK_TIMEOUT 300000		-- Se ficar bloqueado por mais de 5 minutos, aborta.
+
+
 	IF object_id('tempdb..#Historico_Fragmentacao_Indice_TEMP') IS NOT NULL DROP TABLE #Historico_Fragmentacao_Indice_TEMP
 	
 	CREATE TABLE #Historico_Fragmentacao_Indice_TEMP(
@@ -100,11 +105,11 @@ BEGIN
 								CASE when Avg_Fragmentation_In_Percent < 15 then '] REORGANIZE' else '] REBUILD with(ONLINE=ON) ' end
 					END Comando,Page_Count,avg_fragmentation_in_percent
 	INTO #Indices_Fragmentados			
-	FROM #Historico_Fragmentacao_Indice A WITH(NOLOCK) -- tabela que armazena o histórico de fragmentação
+	FROM #Historico_Fragmentacao_Indice A WITH(NOLOCK) -- tabela que armazena o histÃ³rico de fragmentaÃ§Ã£o
 	WHERE Dt_Referencia >= CAST(FLOOR(cast(getdate() AS FLOAT)) AS DATETIME)
 		and ((Avg_Fragmentation_In_Percent >= 10 AND Nm_Indice IS NOT NULL ) OR (Nm_Indice IS null  AND  avg_fragmentation_in_percent > 30))
 		and Page_Count > 1000
-		and Page_Count < 1000000  --indices grandes planejar janela para execução. Ou se quiser libere comentando essa linha
+		and Page_Count < 1000000  --indices grandes planejar janela para execuÃ§Ã£o. Ou se quiser libere comentando essa linha
 	order by Nm_Indice
 
 		/*
