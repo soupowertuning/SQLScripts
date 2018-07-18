@@ -1,3 +1,5 @@
+
+
 /*
 OBS: Executar para cada database que deseja desfragmentar os indices
 
@@ -6,9 +8,14 @@ OBS: Executar para cada database que deseja desfragmentar os indices
 
 */
 
-ALTER PROCEDURE stpManutencao_Indices
+CREATE PROCEDURE stpManutencao_Indices
 AS
 BEGIN
+
+	-- TRATAMENTO DE LOCK
+	SET LOCK_TIMEOUT 300000		-- Se ficar bloqueado por mais de 5 minutos, aborta.
+
+
 	IF object_id('tempdb..#Historico_Fragmentacao_Indice_TEMP') IS NOT NULL DROP TABLE #Historico_Fragmentacao_Indice_TEMP
 	
 	CREATE TABLE #Historico_Fragmentacao_Indice_TEMP(
@@ -92,14 +99,13 @@ BEGIN
 	select	identity(int,1,1) Id, 
 					CASE WHEN Nm_Indice IS null 
 							THEN
-								'ALTER TABLE ' + Nm_Schema+'.['+ Nm_Tabela + '] REBUILD'
+								'ALTER TABLE ' + Nm_Schema+'.['+ Nm_Tabela + '] REBUILD with(ONLINE=ON) '
 							ELSE
 								'ALTER INDEX ['+ Nm_Indice+ '] ON ' + Nm_Schema+'.['+ Nm_Tabela + 
-								CASE when Avg_Fragmentation_In_Percent < 15 then '] REORGANIZE' else '] REBUILD' end
+								CASE when Avg_Fragmentation_In_Percent < 15 then '] REORGANIZE' else '] REBUILD with(ONLINE=ON) ' end
 					END Comando,Page_Count,avg_fragmentation_in_percent
 	INTO #Indices_Fragmentados			
 	FROM #Historico_Fragmentacao_Indice A WITH(NOLOCK) -- tabela que armazena o histórico de fragmentação
-		--join master.sys.databases B on B.name = A.Nm_Database
 	WHERE Dt_Referencia >= CAST(FLOOR(cast(getdate() AS FLOAT)) AS DATETIME)
 		and ((Avg_Fragmentation_In_Percent >= 10 AND Nm_Indice IS NOT NULL ) OR (Nm_Indice IS null  AND  avg_fragmentation_in_percent > 30))
 		and Page_Count > 1000
