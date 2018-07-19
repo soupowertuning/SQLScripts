@@ -1,0 +1,11 @@
+CREATE PROCEDURE stpCheckDB_Database
+AS
+BEGIN
+
+	DECLARE @Db_Name VARCHAR(100)
+	SET @Db_Name = DB_NAME()
+
+	DBCC CHECKDB(@Db_Name)
+
+END
+

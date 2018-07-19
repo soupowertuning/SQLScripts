@@ -1,4 +1,4 @@
-SET NOCOUNT ON
+﻿SET NOCOUNT ON
 
 -- Referencia de onde veio esse script. Fizemos algumas adaptações:
 --http://www.sqlservercentral.com/scripts/Administration/99339/
@@ -58,7 +58,7 @@ JOIN sys.databases SD ON SD.database_id = SF.dbid
 WHERE
 	((SF.growth = 10 AND (SF.status & 0x100000 = 1048576))
 	OR
-	(SF.growth = 1 AND (SF.status & 0x100000 = 0))
+	((SF.growth/128.0) = 1 AND (SF.status & 0x100000 = 0))
 	)
 	and state_desc = 'ONLINE'
 	and SD.name NOT IN  ('master','msdb','model','tempdb')
