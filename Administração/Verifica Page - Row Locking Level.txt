@@ -1,0 +1,35 @@
+-- Resolve SQL Server Database Index Reorganization Page Level Locking Problem
+
+-- https://www.mssqltips.com/sqlservertip/4247/resolve-sql-server-database-index-reorganization-page-level-locking-problem/
+
+-- FALHA NO JOB DE REBUILD
+
+/*
+Message
+Executed as user: NT SERVICE\SQLSERVERAGENT. The index "NomeIndice" on table "NomeTabela" cannot be reorganized because page level locking is disabled. [SQLSTATE 42000] (Error 1943).  The step failed.
+*/
+
+
+-- Query para identificar as tabelas e índices com o Page Lock ou Row Lock desabilitados
+Select 
+	SCH.name as [Schema_Name],
+	OBJ.name as [Table_Name],
+	Indx.name as [Index_Name],
+	Indx.type_desc,
+	Indx.is_disabled,
+	Indx.allow_page_locks,
+	Indx.allow_row_locks,
+	'ALTER INDEX [' + Indx.name + '] ON [' + SCH.name + '].[' + OBJ.name + '] SET ( ALLOW_PAGE_LOCKS = ON )' Page_Lock,
+	'ALTER INDEX [' + Indx.name + '] ON [' + SCH.name + '].[' + OBJ.name + '] SET ( ALLOW_ROW_LOCKS = ON )' Row_Lock 
+from sys.indexes Indx
+left join sys.objects OBJ on OBJ.object_id = Indx.object_id
+left join sys.schemas SCH on SCH.schema_id = OBJ.schema_id
+where
+	(Indx.allow_page_locks = 0 OR Indx.allow_row_locks = 0)
+	--and OBJ.name ='NomeTabela'
+order by SCH.name, OBJ.name
+
+
+-- Script Correção
+ALTER INDEX [NomeIndice] ON [NomeSchema].[NomeTabela] SET ( ALLOW_PAGE_LOCKS = ON )
+ALTER INDEX [NomeIndice] ON [NomeSchema].[NomeTabela] SET ( ALLOW_ROW_LOCKS = ON )
