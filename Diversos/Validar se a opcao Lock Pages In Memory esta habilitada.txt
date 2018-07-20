@@ -1,0 +1,10 @@
+--NOTE: A non zero value for locked pages allocation means Locked pages in memory is enabled
+select osn.node_id,
+osn.memory_node_id,
+osn.node_state_desc,
+omn.locked_page_allocations_kb
+from sys.dm_os_memory_nodes omn
+inner join sys.dm_os_nodes osn on (omn.memory_node_id = osn.memory_node_id)
+where osn.node_state_desc <> 'ONLINE DAC'
+
+--fonte: http://geekswithblogs.net/HumpreyCogay/archive/2016/02/29/lock-pages-in-memory.aspx
