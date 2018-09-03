@@ -7,6 +7,10 @@ sp_WhoIsActive @get_outer_command = 1
 
 sp_WhoIsActive @get_plan = 1
 
+-- delta com o consumo de CPU
+sp_WhoIsActive @get_task_info = 2
+, @delta_interval = 1, @get_plans = 1
+, @get_outer_command = 1
 */
 
 
