@@ -1,7 +1,5 @@
 /*
-
-> SQL 2016
-
+-- SQL SERVER 2016 EM DIANTE
 SELECT  @@SERVERNAME AS [Server Name] ,
         RIGHT(@@version, LEN(@@version) - 3 - CHARINDEX(' ON ', @@VERSION)) AS [OS Info] ,
         LEFT(@@VERSION, CHARINDEX('-', @@VERSION) - 2) + ' '
@@ -10,9 +8,11 @@ SELECT  @@SERVERNAME AS [Server Name] ,
         instant_file_initialization_enabled
 FROM    sys.dm_server_services
 WHERE   servicename LIKE 'SQL Server (%'
-
 */
+
+-- SQL SERVER 2014 E ANTERIORES
 USE master;
+
 SET NOCOUNT ON
 
 -- *** WARNING: Undocumented commands used in this script !!! *** --
@@ -60,4 +60,3 @@ ELSE
    BEGIN
     PRINT 'We have instant file initialization.'
    END
-
