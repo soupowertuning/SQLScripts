@@ -78,7 +78,7 @@ from Historico_Tamanho_Tabela A
 GO
 
 
-CREATE procedure [dbo].[stpTamanhos_Tabelas]
+CREATE procedure [dbo].[stpCarga_Tamanhos_Tabelas]
 as
 
 	if object_id('tempdb..#Tamanho_Tabelas') is not null 
