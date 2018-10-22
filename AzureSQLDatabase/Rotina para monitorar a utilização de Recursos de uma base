@@ -1,0 +1,74 @@
+
+
+
+
+--Cria a tabela de Log das informações de sistema
+CREATE TABLE [dbo].[Log_db_resource_stats](
+	[end_time] [datetime] ,
+	[avg_cpu_percent] [decimal](5, 2) ,
+	[avg_data_io_percent] [decimal](5, 2) ,
+	[avg_log_write_percent] [decimal](5, 2) ,
+	[avg_memory_usage_percent] [decimal](5, 2) ,
+	[xtp_storage_percent] [decimal](5, 2) ,
+	[max_worker_percent] [decimal](5, 2) ,
+	[max_session_percent] [decimal](5, 2) ,
+	[dtu_limit] [int] ,
+	[avg_login_rate_percent] [decimal](5, 2) ,
+	[avg_instance_cpu_percent] [decimal](5, 2) ,
+	[avg_instance_memory_percent] [decimal](5, 2) ,
+	[cpu_limit] [decimal](5, 2) ,
+	CONSTRAINT [pk_Log_db_resource_stats] PRIMARY KEY CLUSTERED  (end_time)
+) ON [PRIMARY]
+
+GO
+--Tabela compactada para consumir menos recursos
+alter index [pk_Log_db_resource_stats] on Log_db_resource_stats REBUILD with(DATA_COMPRESSION=PAGE)
+
+GO
+
+create procedure stpCarga_Monitoramento_db_resource_stats
+AS
+BEGIN
+
+	if object_id('tempdb..#Novos_Registros') is not null
+		drop table #Novos_Registros
+
+	select cast(end_time  AT TIME ZONE 'UTC' AT TIME ZONE 'E. South America Standard Time'as datetime) [end_time],
+	[avg_cpu_percent], [avg_data_io_percent], [avg_log_write_percent], [avg_memory_usage_percent], [xtp_storage_percent], [max_worker_percent], [max_session_percent],
+	 [dtu_limit], [avg_login_rate_percent], [avg_instance_cpu_percent], [avg_instance_memory_percent], [cpu_limit]
+	 into #Novos_Registros
+	from sys.dm_db_resource_stats
+
+	--Se a quantidade de registros ficar muito alta, filtrar para logar apenas alguns valores na tabela
+	--where [avg_cpu_percent] > 20
+	--or [avg_data_io_percent] > 20
+	--or [avg_log_write_percent] > 20
+	--or [avg_memory_usage_percent] > 90
+	--or [max_worker_percent] > 10 
+	--or [max_session_percent] > 10
+
+
+	insert into Log_db_resource_stats ([end_time],[avg_cpu_percent], [avg_data_io_percent], [avg_log_write_percent], [avg_memory_usage_percent], [xtp_storage_percent], [max_worker_percent], [max_session_percent],
+										[dtu_limit], [avg_login_rate_percent], [avg_instance_cpu_percent], [avg_instance_memory_percent], [cpu_limit])
+	select A.[end_time],A.[avg_cpu_percent], A.[avg_data_io_percent], A.[avg_log_write_percent], A.[avg_memory_usage_percent], A.[xtp_storage_percent], A.[max_worker_percent], A.[max_session_percent],
+			A.[dtu_limit], A.[avg_login_rate_percent], A.[avg_instance_cpu_percent], A.[avg_instance_memory_percent], A.[cpu_limit]
+	from #Novos_Registros A
+		left join Log_db_resource_stats B on A.[end_time] = B.[end_time]
+	where B.[end_time] is null
+
+	delete from Log_db_resource_stats
+	where [end_time] < getdate()-10		-- mantem 10 dias de dados na tabela
+END
+
+GO
+
+/*
+	-- Após criado os scripts, rodar a procedure para popular os dados. Agendar essa procedure para rodar a cada 2 horas.
+	
+	exec stpCarga_Monitoramento_db_resource_stats
+
+		select top 10 * 
+	from Log_db_resource_stats
+	order by avg_cpu_percent desc
+
+ */
