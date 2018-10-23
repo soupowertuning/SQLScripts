@@ -62,7 +62,8 @@ AS BEGIN
 
 		SELECT @Ds_Email_Body = 
 		'O Backup foi executado com sucesso!<br/><br/>' + '
-		' + '<b>Informações:</b><br/><br/>		
+		' + '<b>Informações:</b><br/><br/>
+		' + '<b>Servidor:</b> '		+ @@SERVERNAME								+ '<br/><br/>' + '
 		' + '<b>Database:</b> '		+ @Nm_Database								+ '<br/><br/>' + '
 		' + '<b>Caminho:</b> '		+ @Ds_Caminho_Backup						+ '<br/><br/>' + '
 		' + '<b>Data Inicial:</b> ' + CONVERT(VARCHAR(20), @Dt_Inicial, 120)	+ '<br/><br/>' + '
