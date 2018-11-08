@@ -46,7 +46,7 @@ AS BEGIN
 	
 	BACKUP DATABASE @Nm_Database
 	TO DISK = @Ds_Caminho_Backup
-	WITH CHECKSUM, INIT, COMPRESSION, COPY_ONLY	
+	WITH CHECKSUM, INIT, COMPRESSION, COPY_ONLY, STATS = 1	
 
 	-- Envia o Email apenas se o Backup for executado com sucesso
 	IF(@@ERROR = 0)
