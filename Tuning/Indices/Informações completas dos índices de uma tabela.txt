@@ -4,6 +4,8 @@ DECLARE @Nm_Schema VARCHAR(100) = 'dbo',
 
 DECLARE @Nm_Parametro VARCHAR(300) = '' + @Nm_Schema + '.' + @Nm_Tabela + ''
 
+EXEC sp_spaceused @Nm_Parametro 
+
 IF(OBJECT_ID('tempdb..#Temp_Helpindex') IS NOT NULL) DROP TABLE #Temp_Helpindex
 
 CREATE TABLE #Temp_Helpindex(
