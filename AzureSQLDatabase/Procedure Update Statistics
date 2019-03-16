@@ -36,7 +36,7 @@ BEGIN
 	SELECT IDENTITY(int,1,1) Id_Estatistica ,
 		'if exists(select null     FROM sys.stats WHERE name = '''
       	   + REPLACE(A.name, '''', '''''') + ''')
-                                       		UPDATE STATISTICS ' + SCHEMA_NAME(E.schema_id) + '.[' + B.name + '] '
+                                       		UPDATE STATISTICS [' + SCHEMA_NAME(E.schema_id) + '].[' + B.name + '] '
       	   + '[' + A.name + ']' + ' WITH FULLSCAN' Ds_Comando,
       	   D.rows,
       	   C.rowmodctr,
