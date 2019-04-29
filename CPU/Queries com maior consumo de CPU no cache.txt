@@ -8,7 +8,7 @@ where last_elapsed_time > 20
  and last_execution_time > dateadd(ss,-600,getdate()) --ultimos 5 min
 order by A.total_worker_time desc
 
-select distinct A.*, B.*, DB.name
+select distinct A.*, B.*, DB.name AS Nm_Database
 from #Temp_Trace A
 cross apply sys.dm_exec_sql_text (sql_handle) B
 join sys.databases DB on B.dbid = DB.database_id

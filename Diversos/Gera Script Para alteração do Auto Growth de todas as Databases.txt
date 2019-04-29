@@ -23,7 +23,7 @@ FROM sys.sysaltfiles SF
 JOIN sys.databases SD ON SD.database_id = SF.dbid
 WHERE 
 	 state_desc = 'ONLINE'
-	and SD.name NOT IN  ('master','msdb','model','tempdb')
+	and SD.name NOT IN  ('master','msdb','model','tempdb','Traces')
 
 */
 IF object_id('tempdb..#ConfigAutoGrowth') IS NOT NULL
