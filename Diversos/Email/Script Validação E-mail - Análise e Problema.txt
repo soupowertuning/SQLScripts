@@ -30,7 +30,7 @@ order by log_date DESC
 -- TESTE ENVIO DE EMAIL
 EXEC msdb.dbo.sp_send_dbmail    
 		@profile_name = 'MSSQLServer',	
-		@recipients = 'suporte@fabriciolima.net', 		
+		@recipients = 'email@dominio.com', 		
 		@subject = 'TESTE - ASSUNTO' ,    
 		@body = 'TESTE - CORPO' ,
 		@body_format = 'HTML'
