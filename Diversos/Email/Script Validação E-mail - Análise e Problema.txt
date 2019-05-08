@@ -10,7 +10,7 @@ order by 3 desc
 
 
 -- Verifica o Motivo da Falha Envio Email
-SELECT
+SELECT TOP 50
     SEL.event_type,
     SEL.log_date,
     SEL.description,
