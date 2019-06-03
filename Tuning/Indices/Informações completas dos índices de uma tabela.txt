@@ -1,6 +1,7 @@
+USE NomeDatabase
 
-DECLARE @Nm_Schema VARCHAR(100) = 'dbo', 
-		@Nm_Tabela VARCHAR(200) = 'Nome Tabela' -- nome tabela
+DECLARE @Nm_Schema VARCHAR(100) = 'dbo',		-- Nome Schema
+		@Nm_Tabela VARCHAR(200) = 'Nome Tabela' -- Nome Tabela
 
 DECLARE @Nm_Parametro VARCHAR(300) = '' + @Nm_Schema + '.' + @Nm_Tabela + ''
 
@@ -16,7 +17,6 @@ CREATE TABLE #Temp_Helpindex(
 
 INSERT INTO #Temp_Helpindex(index_name, index_description, index_keys)
 EXEC sp_helpindex @Nm_Parametro
-
 
 IF(OBJECT_ID('tempdb..#Temp_Include') IS NOT NULL) DROP TABLE #Temp_Include
 
@@ -63,7 +63,6 @@ where s.database_id = db_id()
 		and o.name = @Nm_Tabela
 order by s.user_seeks desc--o.Name, SCHEMA_NAME(schema_id), i.name
 
-
 IF(OBJECT_ID('tempdb..#Temp_TamanhoIndices') IS NOT NULL) DROP TABLE #Temp_TamanhoIndices
 
 SELECT i.[name] AS IndexName
@@ -76,7 +75,6 @@ INNER JOIN sys.indexes AS i ON s.[object_id] = i.[object_id]
 where o.name = @Nm_Tabela
 GROUP BY i.[name]
 ORDER BY 2 desc
-
 
 IF(OBJECT_ID('tempdb..#Temp_Compression') IS NOT NULL) DROP TABLE #Temp_Compression
 
@@ -91,10 +89,8 @@ INNER JOIN sys.schemas AS [s]
    ON [t].[schema_id] = [s].[schema_id]
 where t.name = @Nm_Tabela
 
-
-
 select B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_Compression_desc,
-	'alter index '+B.index_name+ ' on Lancamento REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=ROW)'
+	'alter index '+B.index_name+ ' on [' + @Nm_Schema  + '].[' + @Nm_Tabela + '] REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=ROW)'
 from  #Temp_Helpindex B 
 	left join #Temp_Include C on B.index_name = C.IndexName collate Latin1_General_BIN
 	left join #Temp_Utilizacao A on  B.index_name = A.Nm_Indice  collate Latin1_General_BIN
