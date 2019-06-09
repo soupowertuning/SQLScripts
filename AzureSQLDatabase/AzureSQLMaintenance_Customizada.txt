@@ -25,9 +25,9 @@ as
 begin
        set nocount on
        declare @msg nvarchar(max);
-       declare @minPageCountForIndex int = 40;
+       declare @minPageCountForIndex int = 500;
        declare @OperationTime datetime2 = sysdatetime();
-       declare @KeepXOperationInLog int =3;
+       declare @KeepXOperationInLog int =7;
 
        /* make sure parameters selected correctly */
        set @operation = lower(@operation)
