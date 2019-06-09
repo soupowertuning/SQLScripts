@@ -205,7 +205,8 @@ CREATE TABLE #Lista_Arquivos_Log_Ordenado (
     Linha INT IDENTITY(1, 1),
 	database_name VARCHAR(200),
     backup_start_date DATETIME,
-    Ds_Arquivo VARCHAR(500)
+    Ds_Arquivo VARCHAR(500),
+	position int
 )
 
 INSERT INTO #Lista_Arquivos_Log_Ordenado
@@ -233,7 +234,7 @@ begin
 	FROM #Lista_Arquivos_Log_Ordenado
 		
 	SELECT @ComandoBackupLog = 
-		'RESTORE LOG '+ @DatabaseDestino +' from disk = ''' + Ds_Arquivo + ''' WITH FILE = 1' + 
+		'RESTORE LOG '+ @DatabaseDestino +' from disk = ''' + Ds_Arquivo +  ''' WITH FILE = ' + cast(position as varchar) +
 		+ CASE WHEN @Ds_Caminho_StandyBy IS NOT NULL THEN ', STANDBY = N''' + @Ds_Caminho_StandyBy + '''' ELSE ', NORECOVERY' END
 		+ ' -- ' + CONVERT(VARCHAR(20), backup_start_date, 120)
 	from #Lista_Arquivos_Log_Ordenado
