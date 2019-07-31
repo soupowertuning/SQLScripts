@@ -1,0 +1,88 @@
+USE [Traces]
+GO
+/****** Object:  StoredProcedure [dbo].[stpManutencao_Indices]    Script Date: 7/30/2019 9:46:11 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER procedure [dbo].[stpManutencao_Indices] 
+AS
+BEGIN
+	SET NOCOUNT ON
+	
+
+	SET LOCK_TIMEOUT 300000		-- Se ficar bloqueado por mais de 5 minutos, aborta.
+
+
+	DECLARE @Id INT, @SQLString NVARCHAR(1000)
+				
+	IF OBJECT_ID('tempdb..#Indices_Fragmentados') IS NOT NULL
+		DROP TABLE #Indices_Fragmentados
+		
+	-- Seleciona os índices fragmentados
+	SELECT  identity(int,1,1) Id,
+		'ALTER INDEX ['+ Nm_Index+ '] ON [' + Nm_Database+ '].['+Nm_Schema+'].['+ Nm_Table + 
+		case when Avg_Fragmentation_In_Percent < 15 then '] REORGANIZE' else '] REBUILD WITH (ONLINE=ON)' end Comando, -- Como existe janela para isso, sempre fazer rebuild
+	 Page_Count, Nm_Database,Nm_Table,Nm_Index, Fl_Compression,Avg_Fragmentation_In_Percent
+	INTO #Indices_Fragmentados
+	FROM Traces.dbo.vwIndex_Fragmentation_History A WITH(NOLOCK) -- tabela que armazena o histórico de fragmentação
+		join master.sys.databases B on B.name = A.Nm_Database
+	WHERE Dt_Log >= CAST(FLOOR(cast(getdate() AS FLOAT)) AS DATETIME)
+		and Avg_Fragmentation_In_Percent >= 10 
+		and Page_Count > 1000
+		and Nm_Index is not null	
+		and B.state_desc = 'ONLINE'
+		and Page_Count < 1000000
+		
+
+		   SELECT * FROM #Indices_Fragmentados
+
+	--mark indexes XML,spatial and columnstore not to run online update 
+	UPDATE A
+	SET A.Comando = REPLACE(A.Comando,'WITH (ONLINE=ON)' ,'')
+	FROM #Indices_Fragmentados A
+		JOIN PartyCenterSoftware_Production_RS.sys.objects B ON A.Nm_Table = B.Name
+		JOIN PartyCenterSoftware_Production_RS.sys.sysindexes C ON A.Nm_Index = C.Name AND B.object_id = C.id
+	WHERE indid > 1000
+		AND A.Nm_Database = 'PartyCenterSoftware_Production_RS'
+
+	-- indices clusterizados com campos ('TEXT', 'NTEXT', 'IMAGE'), não fazem REBUILD ONLINE
+	UPDATE A
+	SET A.Comando = REPLACE(A.Comando,'WITH (ONLINE=ON)' ,'')
+        FROM #Indices_Fragmentados A
+		JOIN PartyCenterSoftware_Production_RS.sys.objects B ON A.Nm_Table = B.Name
+		JOIN PartyCenterSoftware_Production_RS.sys.sysindexes C ON A.Nm_Index = C.Name AND B.object_id = C.id
+		JOIN PartyCenterSoftware_Production_RS.sys.schemas D ON B.[schema_id] = D.[schema_id]
+        INNER JOIN
+        (
+                    SELECT T.TABLE_SCHEMA, T.TABLE_NAME
+                    FROM PartyCenterSoftware_Production_RS.INFORMATION_SCHEMA.COLUMNS C
+                    INNER JOIN PartyCenterSoftware_Production_RS.INFORMATION_SCHEMA.TABLES T ON C.TABLE_SCHEMA = T.TABLE_SCHEMA AND C.TABLE_NAME = T.TABLE_NAME
+                    WHERE T.TABLE_TYPE = 'BASE TABLE'
+                    AND C.DATA_TYPE IN ('TEXT', 'NTEXT', 'IMAGE')
+                    GROUP BY T.TABLE_SCHEMA, T.TABLE_NAME
+        ) AS LOB_TABLE ON D.name = LOB_TABLE.TABLE_SCHEMA AND B.Name = LOB_TABLE.TABLE_NAME
+        WHERE C.indid = 1
+
+
+--select * from #Indices_Fragmentados order by Page_Count desc
+
+	WHILE exists (SELECT Id FROM #Indices_Fragmentados)
+	BEGIN
+		
+	--	 Se passar de 9 da manha deve terminar a execução automaticamente
+		IF (SELECT DATEPART(HOUR, GETDATE())) >= 9 
+			RETURN
+	
+		SELECT TOP 1 @Id = Id , @SQLString = Comando
+		FROM #Indices_Fragmentados
+		ORDER BY Nm_Database, Page_Count 
+		
+		-- Realiza o REORGANIZE OU O REBUILD
+		EXECUTE sp_executesql @SQLString 			
+		
+		DELETE FROM #Indices_Fragmentados
+		WHERE Id = @Id		
+	END
+END
+
