@@ -44,6 +44,20 @@ SQL Server Execution Times:
 --------------------------------------------------------------------------------------------------------------------------------
 -- TESTES "COST THRESHOLD FOR PARALLELISM" E "MAX DEGREE OF PARALLELISM"
 --------------------------------------------------------------------------------------------------------------------------------
+-- Segue abaixo um script de exemplo para alterar os valores dessas configurações.
+
+EXEC sys.sp_configure N'show advanced options', N'1'  RECONFIGURE WITH OVERRIDE
+GO
+EXEC sys.sp_configure N'cost threshold for parallelism', N'35'
+GO
+EXEC sys.sp_configure N'max degree of parallelism', N'4'
+GO
+RECONFIGURE WITH OVERRIDE
+GO
+EXEC sys.sp_configure N'show advanced options', N'0'  RECONFIGURE WITH OVERRIDE
+GO
+
+
 USE Traces
 
 SELECT * 
@@ -56,6 +70,15 @@ ORDER BY NOME
 SQL Server Execution Times:
    CPU time = 515 ms,  elapsed time = 3294 ms.
 */
+
+EXEC sys.sp_configure N'show advanced options', N'1'  RECONFIGURE WITH OVERRIDE
+GO
+EXEC sys.sp_configure N'cost threshold for parallelism', N'20'
+GO
+RECONFIGURE WITH OVERRIDE
+GO
+EXEC sys.sp_configure N'show advanced options', N'0'  RECONFIGURE WITH OVERRIDE
+GO
 
 /*
 -- RESULTADO - COST THRESHOLD FOR PARALLELISM = 20
