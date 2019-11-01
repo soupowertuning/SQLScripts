@@ -1,0 +1,76 @@
+--exec stpFragmentacao_Particao 'FG2019_11','Tabela'
+--exec stpFragmentacao_Particao 'FG2019_11','Tabela'
+
+/*
+
+-- para ver todos os filegroups
+SELECT DISTINCT
+    DS.name  FILEGROUP_NAME,
+    O.name  [TABLE],
+    DB.physical_name  ARQUIVO,
+	A.total_pages Total_Paginas ,
+    P.rows Total_Registro,P.index_id,P.object_id, partition_number
+FROM
+    sys.objects O
+	join sys.indexes i on o.object_id = i.object_id
+	INNER JOIN sys.partition_schemes s ON i.data_space_id = s.data_space_id
+    INNER JOIN sys.partitions P ON O.object_id = P.object_id
+    INNER JOIN sys.allocation_units A ON A.container_id = P.hobt_id
+    INNER JOIN sys.tables T ON O.object_id = T.object_id
+    INNER JOIN sys.data_spaces DS ON DS.data_space_id = A.data_space_id
+    INNER JOIN sys.database_files DB ON DB.data_space_id = DS.data_space_id
+WHERE
+o.name = 'Tabela'
+
+*/
+
+
+CREATE procedure stpFragmentacao_Particao @Filegroup varchar(50),@Nm_Tabela varchar(50)
+AS
+--declare @Filegroup varchar(50),@Nm_Tabela varchar(50)
+--select @Filegroup = 'FG2019_11',@Nm_Tabela = 'TRANSACOES_OPERADORA'
+
+if object_id('Tempdb..#TEMP') is not null
+	drop table #TEMP
+
+SELECT DISTINCT
+    DS.name  FILEGROUP_NAME,
+    O.name  [TABLE],
+    DB.physical_name  ARQUIVO,
+	A.total_pages Total_Paginas ,
+    P.rows Total_Registro,P.index_id,P.object_id, partition_number, cast(null as numeric(15,2)) avg_fragmentation_in_percent 
+into #TEMP
+FROM
+    sys.objects O
+	join sys.indexes i on o.object_id = i.object_id
+	INNER JOIN sys.partition_schemes s ON i.data_space_id = s.data_space_id
+    INNER JOIN sys.partitions P ON O.object_id = P.object_id
+    INNER JOIN sys.allocation_units A ON A.container_id = P.hobt_id
+    INNER JOIN sys.tables T ON O.object_id = T.object_id
+    INNER JOIN sys.data_spaces DS ON DS.data_space_id = A.data_space_id
+    INNER JOIN sys.database_files DB ON DB.data_space_id = DS.data_space_id
+WHERE
+	o.name = @Nm_Tabela
+and DS.name = @Filegroup
+and A.total_pages > 1000
+
+
+declare @index_id int,@object_id int,@partition_number int,@avg_fragmentation_in_percent numeric(15,2)
+
+while exists(select top 1 * from #TEMP where avg_fragmentation_in_percent is null)
+begin 
+	select top 1 @index_id=index_id,@object_id=object_id,@partition_number=partition_number
+	from #TEMP 
+	where avg_fragmentation_in_percent is null
+
+	SELECT @avg_fragmentation_in_percent = avg_fragmentation_in_percent
+	FROM sys.dm_db_index_physical_stats(db_id(), @object_id, @index_id, @partition_number, 'LIMITED') 
+	WHERE alloc_unit_type_desc = 'IN_ROW_DATA' AND index_level = 0
+
+	update #TEMP
+	set avg_fragmentation_in_percent = @avg_fragmentation_in_percent
+	where @index_id=index_id and @object_id=object_id and @partition_number=partition_number
+end
+
+	select * from #TEMP
+	order by avg_fragmentation_in_percent desc
