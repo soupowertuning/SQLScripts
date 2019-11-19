@@ -8,6 +8,20 @@ NomeTabela -> Informar o nome específico da Tabela
 QueryDemorada -> Colocar o Texto da Query Demorada que será buscada no Traces
 */
 
+GO
+
+-- Cria a Tabela de Histórico da Atualização
+USE Traces
+
+CREATE TABLE [dbo].[Log_Atualizacao_Estatisticas_Tabela] (
+	Id_Log INT IDENTITY(1,1) NOT NULL,
+	Dt_Log DATETIME NOT NULL,	
+	Nm_Database VARCHAR(500) NOT NULL,
+	Nm_Table VARCHAR(500) NOT NULL
+)
+
+GO
+
 USE [msdb]
 GO
 
@@ -80,9 +94,14 @@ BEGIN
 		stat.object_id = OBJECT_ID(''NomeTabela'')
 		AND I.type_desc NOT LIKE ''%COLUMNSTORE%''
 
-	DECLARE @Ds_Comando NVARCHAR(1000)
+	-- Insere um registro na Tabela de Historico
+	INSERT INTO [Traces].[dbo].[Log_Atualizacao_Estatisticas_Tabela]
+	VALUES(GETDATE(), ''NomeDatabase'', ''NomeTabela'')
 
 	-- Loop para executar as estatisticas da tabela
+
+	DECLARE @Ds_Comando NVARCHAR(1000)
+
 	WHILE EXISTS(SELECT TOP 1 * FROM #TEMP_ATUALIZA_ESTATISTICAS)
 	BEGIN
 		SELECT TOP 1 @Ds_Comando = Ds_Comando
