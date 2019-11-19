@@ -1,0 +1,123 @@
+/*
+SUBSTITUIR:
+
+NomeDatabase -> Informar o nome específico da Database
+
+NomeTabela -> Informar o nome específico da Tabela
+
+QueryDemorada -> Colocar o Texto da Query Demorada que será buscada no Traces
+*/
+
+USE [msdb]
+GO
+
+/****** Object:  Job [DBA - Atualização de Estatísticas x Queries Demoradas - Tabela - NomeTabela]    Script Date: 19/11/2019 11:12:29 ******/
+BEGIN TRANSACTION
+DECLARE @ReturnCode INT
+SELECT @ReturnCode = 0
+/****** Object:  JobCategory [Database Maintenance]    Script Date: 19/11/2019 11:12:29 ******/
+IF NOT EXISTS (SELECT name FROM msdb.dbo.syscategories WHERE name=N'Database Maintenance' AND category_class=1)
+BEGIN
+EXEC @ReturnCode = msdb.dbo.sp_add_category @class=N'JOB', @type=N'LOCAL', @name=N'Database Maintenance'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+
+END
+
+DECLARE @jobId BINARY(16)
+EXEC @ReturnCode =  msdb.dbo.sp_add_job @job_name=N'DBA - Atualização de Estatísticas x Queries Demoradas - Tabela - NomeTabela', 
+		@enabled=1, 
+		@notify_level_eventlog=0, 
+		@notify_level_email=0, 
+		@notify_level_netsend=0, 
+		@notify_level_page=0, 
+		@delete_level=0, 
+		@description=N'No description available.', 
+		@category_name=N'Database Maintenance', 
+		@owner_login_name=N'sa', 
+		@notify_email_operator_name=N'DBA_Operator', 
+		@job_id = @jobId OUTPUT
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+/****** Object:  Step [TABELA NomeTabela]    Script Date: 19/11/2019 11:12:29 ******/
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'TABELA NomeTabela', 
+		@step_id=1, 
+		@cmdexec_success_code=0, 
+		@on_success_action=1, 
+		@on_success_step_id=0, 
+		@on_fail_action=2, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=0, 
+		@os_run_priority=0, @subsystem=N'TSQL', 
+		@command=N'USE NomeDatabase
+
+SET NOCOUNT ON
+
+DECLARE @Dt_Referencia DATETIME
+
+SELECT @Dt_Referencia = GETDATE()
+
+-- Se tiver algum registro demorado da query deve atualizar as estatisticas da tabela
+IF EXISTS (
+	select TOP 1 *
+	from Traces..Queries_Profile
+	where 
+		StartTime > DATEADD(MINUTE,-5,@Dt_Referencia) AND StartTime < @Dt_Referencia
+		and TextData LIKE ''%QueryDemorada%''
+		and Duration > 30
+)
+BEGIN
+	-- Busca todas as estatisticas dos indices da tabela - NomeTabela
+	IF (OBJECT_ID (''tempdb..#TEMP_ATUALIZA_ESTATISTICAS'') IS NOT NULL)
+		DROP TABLE #TEMP_ATUALIZA_ESTATISTICAS
+
+	SELECT ''UPDATE STATISTICS NomeTabela ''+ stat.name AS Ds_Comando
+	INTO #TEMP_ATUALIZA_ESTATISTICAS
+	FROM sys.stats AS stat
+	JOIN sys.objects O ON O.object_id = stat.object_id
+	JOIN sys.indexes I ON O.object_id = I.object_id and stat.name = i.name
+	CROSS APPLY sys.dm_db_stats_properties(stat.object_id, stat.stats_id) AS sp
+	WHERE 
+		stat.object_id = OBJECT_ID(''NomeTabela'')
+		AND I.type_desc NOT LIKE ''%COLUMNSTORE%''
+
+	DECLARE @Ds_Comando NVARCHAR(1000)
+
+	-- Loop para executar as estatisticas da tabela
+	WHILE EXISTS(SELECT TOP 1 * FROM #TEMP_ATUALIZA_ESTATISTICAS)
+	BEGIN
+		SELECT TOP 1 @Ds_Comando = Ds_Comando
+		FROM #TEMP_ATUALIZA_ESTATISTICAS
+
+		EXEC sp_executesql @Ds_Comando
+
+		DELETE #TEMP_ATUALIZA_ESTATISTICAS
+		WHERE Ds_Comando = @Ds_Comando
+	END
+END', 
+		@database_name=N'NomeDatabase', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_update_job @job_id = @jobId, @start_step_id = 1
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobschedule @job_id=@jobId, @name=N'DIÁRIO - A CADA 5 MINUTOS', 
+		@enabled=1, 
+		@freq_type=4, 
+		@freq_interval=1, 
+		@freq_subday_type=4, 
+		@freq_subday_interval=5, 
+		@freq_relative_interval=0, 
+		@freq_recurrence_factor=0, 
+		@active_start_date=20191119, 
+		@active_end_date=99991231, 
+		@active_start_time=200, 
+		@active_end_time=235959, 
+		@schedule_uid=N'cd2e885a-c3df-431c-8afd-246f874ff765'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+COMMIT TRANSACTION
+GOTO EndSave
+QuitWithRollback:
+    IF (@@TRANCOUNT > 0) ROLLBACK TRANSACTION
+EndSave:
+GO
