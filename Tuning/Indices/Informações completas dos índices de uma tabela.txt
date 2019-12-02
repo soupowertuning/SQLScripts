@@ -1,7 +1,7 @@
 USE NomeDatabase
 
 DECLARE @Nm_Schema VARCHAR(100) = 'dbo',		-- Nome Schema
-		@Nm_Tabela VARCHAR(200) = 'Nome Tabela' -- Nome Tabela
+		@Nm_Tabela VARCHAR(200) = 'NomeTabela' -- Nome Tabela
 
 DECLARE @Nm_Parametro VARCHAR(300) = '' + @Nm_Schema + '.' + @Nm_Tabela + ''
 
