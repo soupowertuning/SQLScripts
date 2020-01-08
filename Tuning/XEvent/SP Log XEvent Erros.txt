@@ -180,6 +180,26 @@ WITH (MAX_DISPATCH_LATENCY = 5SECONDS)
 ALTER EVENT SESSION what_queries_are_failing
 ON SERVER STATE = START
 
+/*
+-- Retorna os Erros do BD - Para validar
+USE Traces
 
+SELECT D.name, COUNT(*) AS Qtd
+FROM Log_DB_Error L (NOLOCK)
+JOIN sys.databases D ON L.database_id = D.database_id
+WHERE
+	err_timestamp >= '20200107 12:00'
+	AND err_timestamp < '20200108'
+GROUP BY D.name
+ORDER BY Qtd DESC
+
+SELECT D.name, L.*
+FROM Log_DB_Error L (NOLOCK)
+JOIN sys.databases D ON L.database_id = D.database_id
+WHERE
+	err_timestamp >= '20200107 12:00'
+	AND err_timestamp < '20200108'
+ORDER BY err_timestamp DESC
+*/
 
 
