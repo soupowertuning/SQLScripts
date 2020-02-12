@@ -56,7 +56,7 @@ SELECT ''' + @DB + ''' AS [Nm_Database],
        [p].[data_compression_desc] AS [Compression], 
        [i].[fill_factor],
        [p].[rows],
-			 ''ALTER INDEX ['' + [i].[name] + ''] ON ['' + [s].[name] + ''].['' + [t].[name] + 
+			 ''ALTER INDEX ['' + [i].[name] + ''] ON [' + @DB + '].['' + [s].[name] + ''].['' + [t].[name] + 
 			 ''] REBUILD PARTITION = ALL WITH (DATA_COMPRESSION = PAGE'' +
 			 CASE WHEN [i].[fill_factor] BETWEEN 1 AND 89 THEN '', FILLFACTOR = 90'' ELSE '''' END + '' )'' AS Ds_Comando
 FROM [sys].[partitions] AS [p]
@@ -80,7 +80,7 @@ SELECT DISTINCT
 	   [t].[name] AS [Table],
        [p].[data_compression_desc] AS [Compression], 
        --[i].[fill_factor],
-       ''ALTER TABLE ['' + [s].[name] + ''].['' + [t].[name] + ''] REBUILD WITH (DATA_COMPRESSION = PAGE)'' AS Ds_Comando
+       ''ALTER TABLE [' + @DB + '].['' + [s].[name] + ''].['' + [t].[name] + ''] REBUILD WITH (DATA_COMPRESSION = PAGE)'' AS Ds_Comando
 FROM [sys].[partitions] AS [p]
 INNER JOIN sys.tables AS [t] 
      ON [t].[object_id] = [p].[object_id]
