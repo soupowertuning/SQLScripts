@@ -89,8 +89,8 @@ INNER JOIN sys.schemas AS [s]
    ON [t].[schema_id] = [s].[schema_id]
 where t.name = @Nm_Tabela
 
-select B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_Compression_desc,
-	'alter index '+B.index_name+ ' on [' + @Nm_Schema  + '].[' + @Nm_Tabela + '] REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=ROW)'
+select B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_compression_desc,
+	'alter index ['+ B.index_name + '] on [' + @Nm_Schema  + '].[' + @Nm_Tabela + '] REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=PAGE)'
 from  #Temp_Helpindex B 
 	left join #Temp_Include C on B.index_name = C.IndexName collate Latin1_General_BIN
 	left join #Temp_Utilizacao A on  B.index_name = A.Nm_Indice  collate Latin1_General_BIN
