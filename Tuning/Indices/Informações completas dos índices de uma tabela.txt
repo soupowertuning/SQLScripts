@@ -76,9 +76,10 @@ where o.name = @Nm_Tabela
 GROUP BY i.[name]
 ORDER BY 2 desc
 
+-- OBS: O DISTINCT É UTILIZADO PARA REMOVER A DUPLICIDADE
 IF(OBJECT_ID('tempdb..#Temp_Compression') IS NOT NULL) DROP TABLE #Temp_Compression
 
-select i.name,data_compression_desc 
+select distinct i.name, data_compression_desc 
 into #Temp_Compression
 FROM [sys].[partitions] AS [p]
 INNER JOIN sys.tables AS [t] 
