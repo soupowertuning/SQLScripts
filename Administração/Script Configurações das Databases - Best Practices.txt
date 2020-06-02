@@ -34,6 +34,7 @@ SELECT
 	WHEN 120 THEN '120 (SQL Server 2014)'
 	WHEN 130 THEN '130 (SQL Server 2016)'
 	WHEN 140 THEN '140 (SQL Server 2017)'
+	WHEN 150 THEN '150 (SQL Server 2019)'
 	END AS [compatibility level],
 	user_access_desc AS [User access],
 	CONVERT(VARCHAR(20), create_date, 103) + ' ' + CONVERT(VARCHAR(20), create_date, 108) AS [Creation date],
