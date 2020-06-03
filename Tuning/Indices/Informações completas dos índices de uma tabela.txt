@@ -65,7 +65,9 @@ order by s.user_seeks desc--o.Name, SCHEMA_NAME(schema_id), i.name
 
 IF(OBJECT_ID('tempdb..#Temp_TamanhoIndices') IS NOT NULL) DROP TABLE #Temp_TamanhoIndices
 
-SELECT i.[name] AS IndexName
+SELECT 
+	i.index_id,
+	i.[name] AS IndexName
     ,SUM(s.[used_page_count]) * 8 AS IndexSizeKB
 into #Temp_TamanhoIndices
 FROM sys.dm_db_partition_stats AS s
@@ -73,7 +75,7 @@ INNER JOIN sys.indexes AS i ON s.[object_id] = i.[object_id]
     AND s.[index_id] = i.[index_id]
 	join sysobjects o ON i.[object_id] = o .id
 where o.name = @Nm_Tabela
-GROUP BY i.[name]
+GROUP BY i.index_id,i.[name]
 ORDER BY 2 desc
 
 -- OBS: O DISTINCT É UTILIZADO PARA REMOVER A DUPLICIDADE
@@ -90,7 +92,9 @@ INNER JOIN sys.schemas AS [s]
    ON [t].[schema_id] = [s].[schema_id]
 where t.name = @Nm_Tabela
 
-select B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_compression_desc,
+select 
+	D.index_id, B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,
+	A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_compression_desc,
 	'alter index ['+ B.index_name + '] on [' + @Nm_Schema  + '].[' + @Nm_Tabela + '] REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=PAGE)'
 from  #Temp_Helpindex B 
 	left join #Temp_Include C on B.index_name = C.IndexName collate Latin1_General_BIN
