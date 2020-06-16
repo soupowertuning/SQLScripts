@@ -1,0 +1,286 @@
+
+/*
+DEMO - Descomplicando Azure
+Autor: Fabrício Lima
+Dúvidas, Críticas ou sugestões
+
+Blog: fabriciolima.net
+Email: fabricioflima@gmail.com
+Instagram: @fabriciofrancalima
+Linkedin: https://www.linkedin.com/in/fabriciofrancalima/
+
+Módulo 1 - Curso Azure SQL Database - Free
+	- Cursos.powertuning.com.br
+ 
+ Link direto: https://cursos.powertuning.com.br/course?courseid=mdulo-01-azure-sql-database-conceitos-bsicos-para-iniciar-essa-jornada-na-nuvem
+
+ 
+Azure SQL Database: naodeletedadosdocoleguinha.database.windows.net
+instancia: sqlmifabricio.public.09d9812fd930.database.windows.net,3342
+ 
+*/
+
+
+/***********************************************
+1) Fazendo um JOIN entre duas bases
+************************************************/
+
+CREATE database TeamFabricioLima
+GO
+use TeamFabricioLima
+
+create table Jogador_Bom(
+	Id_Jogador_Bom int identity,
+	Nome varchar(60)
+	)
+	
+	insert into Jogador_Bom
+	select 'Fabricio Lima'
+	insert into Jogador_Bom
+	select 'Goleiro Vitor Fava'	
+
+	create table Jogador_Ruim(
+		Id_Jogador_Ruim int identity,
+		Nome varchar(60)
+		)
+
+	insert into Jogador_Ruim
+	select 'Arthur Luz'
+
+create database TeamFabianoAmorim
+GO
+use TeamFabianoAmorim
+
+create table Jogador_Bom(
+	Id_Jogador_Bom int identity,
+	Nome varchar(60)
+	)
+	
+	insert into Jogador_Bom
+	select 'Mailson'
+	insert into Jogador_Bom
+	select 'Goleiro Aislan'
+	insert into Jogador_Bom
+	select 'Fabricio Catae'
+
+	create table Jogador_Ruim(
+		Id_Jogador_Ruim int identity,
+		Nome varchar(60)
+		)
+
+	insert into Jogador_Ruim
+	select 'Fabiano Amorim'
+	insert into Jogador_Ruim
+	select 'Arthur Luz'
+
+
+	--Fazendo um join entre duas bases em um ambiente no azure
+	SELECT A.Nome
+	FROM TeamFabianoAmorim..Jogador_Ruim A
+		JOIN TeamFabricioLima..Jogador_Ruim B ON A.Nome = B.Nome
+
+
+https://www.fabriciolima.net/blog/2018/11/22/managed-instance-6-consigo-fazer-um-join-entre-tabelas-de-bases-diferentes/
+
+
+/***********************************************
+2) Enviando um E-mail
+************************************************/
+
+--Configurar o Database Mail normalmente, mas o nome do PROFILE tem que ser: AzureManagedInstance_dbmail_profile
+--Para o E-mail funcionar tem que fazer uma liberação no MI para saida pela por 587
+
+-- No meu blog tem um passa a passo
+https://www.fabriciolima.net/blog/2018/11/27/managed-instance-9-agora-consigo-mandar-e-mail-do-sql-server/
+
+
+/***********************************************
+3) Utilizando o Profile
+************************************************/
+SELECT 'Será que o profiler funciona?'
+
+/***********************************************
+4) Consigo criar jobs
+************************************************/
+Blog: https://www.fabriciolima.net/blog/2018/11/29/managed-instance-11-agora-consigo-criar-jobs-direto-no-ssms/
+
+/***********************************************
+5) LINKED SERVER do MI para o Azure SQL Database
+************************************************/
+Blog: https://www.fabriciolima.net/blog/2018/11/28/managed-instance-10-consigo-criar-linked-server/
+
+
+/******************************************************************************************************
+					Melhor da Festa - Alta Disponibilidade com o Managed Instance
+*******************************************************************************************************/
+
+use naodeletedadosdocoleguinha
+
+
+SELECT DB_NAME (drs.[database_id]) AS logical_database_name,
+       drs.[database_id],
+	   drs.[replica_id],
+       drs.[is_local],
+       drs.[is_primary_replica],
+       drs.[synchronization_state_desc],
+       drs.[synchronization_health_desc],
+       drs.[database_state_desc],
+       drs.[is_suspended],
+       drs.[suspend_reason_desc],
+       IIF(ccs.copy_guid IS NOT NULL, 1, 0) AS is_forwarder,
+       CASE
+           WHEN ccs.replication_state_desc = 'SEEDING' THEN 1
+           ELSE 0
+       END AS is_seeding_in_progress
+FROM sys.dm_hadr_database_replica_states drs
+LEFT OUTER JOIN sys.dm_hadr_physical_seeding_stats pss ON pss.local_Database_name IN (drs.group_id,
+                                                                                      drs.group_database_id)
+LEFT OUTER JOIN sys.dm_hadr_fabric_continuous_copy_status ccs ON ccs.copy_guid IN (drs.group_id,
+                                                                                   drs.group_database_id) 
+WHERE DB_NAME (drs.[database_id]) = 'naodeletedadosdocoleguinha'
+
+
+CREATE TABLE Teste_MI(
+ID INT,
+Nome VARCHAR(200),
+Dt_log datetime)
+
+
+INSERT INTO Teste_MI
+SELECT 1,'Fabricio Lima',GETDATE()
+
+SELECT * FROM Teste_MI
+
+--Abrir uma conexão e deixar executando.
+set nocount on
+while 1=1 
+INSERT INTO Teste_MI
+SELECT 1,'Fabricio Lima',GETDATE()
+
+--Abrir duas conexões e deixar executando
+set nocount on
+declare @cod int
+while 1=1
+select @cod = count(*) from naodeletedadosdocoleguinha..Teste_MI where Nome like '%Lima%'
+
+--conferir os processos em execução
+sp_whoisactive
+
+--conferir o consumo de CPU em produção
+SELECT   avg_cpu_percent, avg_data_io_percent, avg_log_write_percent, avg_memory_usage_percent, xtp_storage_percent,
+       max_worker_percent, max_session_percent,  avg_login_rate_percent, end_time 
+FROM sys.dm_db_resource_stats WITH (NOLOCK) 
+ORDER BY end_time DESC OPTION (RECOMPILE);
+
+
+-- Alterar as consultas (queries bombas) para rodarem no secundário
+ApplicationIntent=READONLY
+
+-- Executar as queries abaixo no server de produção e de relatórios
+select DATABASEPROPERTYEX('master','updateability')
+EXEC sp_WhoIsActive
+
+
+SELECT   avg_cpu_percent, avg_data_io_percent, avg_log_write_percent, avg_memory_usage_percent, xtp_storage_percent,
+       max_worker_percent, max_session_percent,  avg_login_rate_percent, end_time 
+FROM sys.dm_db_resource_stats WITH (NOLOCK) 
+ORDER BY end_time DESC OPTION (RECOMPILE);
+
+SELECT COUNT(*) FROM naodeletedadosdocoleguinha..Teste_MI
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------- Acesso  Managed Instance -------------
+/*
+-- Disponível até 22/06
+instancia: sqlmifabricio.public.09d9812fd930.database.windows.net,3342
+
+login: valeufabricio
+
+senha: valeuapenatervistoessapalestra
+
+
+*/
+
+
+USE naodeletedadosdocoleguinha
+
+CREATE TABLE Teste_MI(
+ID INT,
+Nome VARCHAR(200),
+Dt_log datetime)
+
+TRUNCATE TABLE Teste_MI
+
+SELECT * FROM Teste_MI
+
+INSERT INTO Teste_MI
+SELECT 1,'Fabricio Lima',GETDATE()
+
+
+-------------- Acesso  Azure SQL Database -------------
+/*
+-- Disponível até 22/06
+Azure SQL Database: naodeletedadosdocoleguinha.database.windows.net
+Login: valeufabricio
+senha: ValeuaPenaTerVistoEssaPalestraNota10
+
+*/
+
+USE naodeletedadosdocoleguinha
+
+CREATE TABLE Teste_AzureSQLDB(
+ID INT,
+Nome VARCHAR(200),
+Dt_log datetime)
+
+SELECT * FROM Teste_AzureSQLDB
+
+INSERT INTO Teste_AzureSQLDB
+SELECT 1,'Fabricio Lima',GETDATE()
+
+GRANT SELECT,UPDATE,INSERT ON Teste_AzureSQLDB TO valeufabricio 
+
+
+
+/*
+
+-- Borko Novakovic (era o responsável pelo produto)
+https://azure.microsoft.com/pt-br/blog/author/bonova/
+
+-- Jovan Popovic (era braço direito do borko no projeto)
+https://sqlbits.com/Sessions/Event18/Managed_Instances_Deep_Dive
+https://medium.com/@JovanPop_MSFT
+
+
+Após a palestram vou postar ao final dessa live no meu stores no instagram uma foto que tirei com eles no MVP Summit em Seattle
+
+Me adicionem ai: @fabriciofrancalima
+
+
+-- Dica de leitura (24 posts até agora sobre Managed Instance e crescendo)
+https://www.fabriciolima.net/blog/category/managed-instance
+
+*/
