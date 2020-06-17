@@ -323,6 +323,17 @@ WHERE Dt_Criacao < ISNULL(@Ultimo_Backup_Diferencial, @Ultimo_Backup_FULL)
 
 -- select * from #Lista_Arquivos_Log
 
+--------------------------------------------------------------------------------------------------------------------------------
+-- RESTORE FULL
+--------------------------------------------------------------------------------------------------------------------------------
+PRINT '
+
+-- FULL' + ' -- ' + CONVERT(VARCHAR(20), @Ultimo_Backup_FULL, 120) + '
+RESTORE DATABASE ' + @DatabaseDestino + '
+FROM DISK = ''' + @Ds_Caminho_Backup_Full + ''' 
+WITH	NORECOVERY , STATS = 1,'
+
+
 ---------------------------------------------------------------------------------------------------------------------------------
 -- Busca os nomes lógicos dos arquivos
 --------------------------------------------------------------------------------------------------------------------------------
@@ -362,6 +373,16 @@ DECLARE
 	@Move VARCHAR(MAX) = '',
 	@FileID INT
 
+/*
+-- https://docs.microsoft.com/en-us/sql/t-sql/statements/restore-statements-filelistonly-transact-sql
+Type -> The type of file, one of:
+
+L = Microsoft SQL Server log file
+D = SQL Server data file
+F = Full Text Catalog
+S = FileStream, FileTable, or In-Memory OLTP container
+*/
+
 -- Tratamento para gerar o comando MOVE
 WHILE EXISTS (SELECT TOP 1 * FROM #Filelistonly)
 BEGIN
@@ -369,35 +390,29 @@ BEGIN
 	from #Filelistonly
 	order by FileID
 		
-	select @Move += REPLICATE(' ', 8) + 'MOVE ' 			 
+	select 	 
+		@Move = REPLICATE(' ', 8) + 'MOVE ' 			 
 					 + QUOTENAME(LogicalName,'''''') + ' TO '					 
 					 + CASE
 						WHEN FileID = 1		-- DATA FILE - PRIMARY
 							THEN QUOTENAME(REPLACE(PhysicalName,'.mdf', '_' + @DatabaseDestino + '.mdf'),'''''')
+						WHEN Type = 'S'	-- FileStream, FileTable, or In-Memory OLTP container
+							THEN QUOTENAME(PhysicalName + '_' + @DatabaseDestino,'''''')
+							--THEN '''' + PhysicalName + '_' + @DatabaseDestino + ''''
 						WHEN Type <> 'L'	-- DATA FILE - SECUNDARY
 							THEN QUOTENAME(REPLACE(PhysicalName,'.ndf', '_' + @DatabaseDestino + '.ndf'),'''''')
 						ELSE				-- LOG FILE
 							QUOTENAME(REPLACE(PhysicalName,'.ldf', '_' + @DatabaseDestino + '.ldf'),'''''')
 					 END
-					 + CASE WHEN FileID <> 1 THEN ', ' ELSE ' ' END + CHAR(10)
+					 + CASE WHEN FileID <> 1 THEN ', ' ELSE ' ' END --+ CHAR(10)
 	from #Filelistonly
 	where FileID = @FileID
-	
+
+	PRINT @Move	
 
 	delete #Filelistonly
 	where FileID = @FileID
 END
-
---------------------------------------------------------------------------------------------------------------------------------
--- RESTORE FULL
---------------------------------------------------------------------------------------------------------------------------------
-PRINT '
-
--- FULL' + ' -- ' + CONVERT(VARCHAR(20), @Ultimo_Backup_FULL, 120) + '
-RESTORE DATABASE ' + @DatabaseDestino + '
-FROM DISK = ''' + @Ds_Caminho_Backup_Full + ''' 
-WITH	NORECOVERY , STATS = 1,
-' + @Move
 
 --------------------------------------------------------------------------------------------------------------------------------
 --	RESTORE DIFERENCIAL
