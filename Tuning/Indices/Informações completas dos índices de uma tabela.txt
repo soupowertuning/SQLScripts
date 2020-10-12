@@ -103,3 +103,19 @@ from  #Temp_Helpindex B
 	left join #Temp_Compression E on B.index_name = E.name collate Latin1_General_BIN
 where B.index_description <> 'nonclustered, hypothetical'
 order by B.index_keys,A.user_seeks desc
+
+/*
+--incluir filtered index
+SELECT [SchemaName] = s.[Name]
+		,[TableName] = t.[Name]
+		,[IndexName] = i.[Name]
+		,[IndexType] = i.[type_desc]
+		,[Filter] = i.filter_definition
+FROM sys.indexes i
+INNER JOIN sys.tables t ON t.object_id = i.object_id
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE t.type_desc = N'USER_TABLE'
+AND i.has_filter = 1
+and t.name = @Nm_Tabela
+
+*/
