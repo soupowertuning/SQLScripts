@@ -6,4 +6,8 @@ select OBJECT_NAME(ePS.[object_id], ePS.database_id) AS [procedure_name],ePS.exe
 FROM sys.dm_exec_procedure_stats AS ePS  ) X on obj.name = X.[procedure_name]
 WHERE sqlmod.definition LIKE '%CURSOR%'  --Objto a ser procurado
 and sqlmod.definition NOT LIKE '%FAST_FORWARD%'  --Objto a ser procurado
-ORDER BY execution_count desc
+ORDER BY execution_count desc,type_desc
+
+/*
+Essa quantidade pega execuções que estão no plan cache. Ou seja, pode variar toda vez que executar. Podem aparecer mais ou menos procedures na lista com valores.
+*/
