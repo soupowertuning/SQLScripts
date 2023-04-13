@@ -1,0 +1,77 @@
+
+
+-- Dicas para ter cuidado em uma Atualização grande do Protheus.
+
+-- Atualizações pequenas pode não ser necessário.
+
+
+
+
+-- 1.0) Parar o sistema (Analista Protheus) 
+	-- 1.1 - Desabilitar jobs do SQL Server que possam atrapalhar a atualização ( Backup, Checkdb, update statistics, Rebuild de Index e qualquer outro job pesado que tenha no ambiente).
+	-- 1.2 - Rodar o Script que gera o Script de Criação dos Índices Customizados. Caso a atualização exclua esses índices, será só rodar esse job que recriamos os scripts.
+
+
+
+-- 2.0) Se o backup full rodar rápido, executar um backup FULL.
+
+	--2.1) Se a base for gigante e não quiser esperar um FULL, pode realizar um backup diferencial (tem que garantir que tem disponível o último FULL)
+
+
+
+-- 3.0) Após garantir que tem todos os dados salvos, mudar o recovery da base para SIMPLE
+
+-- Assista o módulo de backup do curso de tarefas do dia de um DBA para entender mais a fundo sobre o assunto
+
+	ALTER DATABASE NOME SET RECOVERY SIMPLE
+
+
+-- Isso vai reduzir o risco de uma atualização gigante que recrie tabelas e colunas ou que faça updates ou deletes grandes, exploda o log do banco e faça todo o processo falhar.
+
+/*****  Acabei de te salvar de um rollback com essa dica ai   *****/
+
+
+
+-- 4.0) Faça a atualização do Protheus e se quiser acompanhar de perto monitore o que está sendo feito no banco de dados
+
+-- F5 na whoisactive
+EXEC sp_whoisactive
+
+
+
+-- 5.0) Atualização finalizada com problema?
+
+	-- 5.1) Pode renomear a base estragada para conferir algo se isso for te ajudar.
+	
+	-- 5.2) Se não for necessário, restaurar os backups realizados antes da atualização
+
+	-- 5.3) Voltar os jobs do SQL Server
+
+	-- 5.4) Voltar o sistema
+	
+
+
+-- 6.0) A atualização foi realizada com sucesso?
+
+	--6.1) Compressão de Dados (se for possível, Edição Enterprise OU SQL 2016 SP1)
+			--Se tiver janela para isso, a atualização pode ter desfeito a compressão que tinha realizado na base de dados.
+				--Para evitar essa mudança no ambiente, seria interessante compactar novamente.
+
+	-- 6.2) Voltar o recovery da base para FULL
+
+		ALTER DATABASE NOME SET RECOVERY FULL
+
+	-- 6.3) Fazer um backup FULL do banco de dados
+
+		-- Se o backup do log tentar rodar nesse momento vai falhar. Para não ver essas falhas teria que desabilitar e voltar após concluir o backup full.
+	
+	-- 6.4) Voltar os jobs do SQL Server
+
+	-- 6.5) Voltar o sistema
+
+
+
+-- 7.0)  Atualizar Estatísticas
+
+	-- Caso a atualização tenha alterado muitos dados, é bom atualizar as estatísticas do ambiente.
+	-- Executar o job diário que deve existir
