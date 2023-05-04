@@ -1,0 +1,488 @@
+SELECT database_id,
+ CONVERT(VARCHAR(25), DB.name) AS dbName,
+ CONVERT(VARCHAR(10), DATABASEPROPERTYEX(name, 'status')) AS [Status],
+ state_desc,
+ (SELECT COUNT(1) FROM sys.master_files WHERE DB_NAME(database_id) = DB.name AND type_desc = 'rows') AS DataFiles,
+ (SELECT SUM((cast(size as bigint)*8)/1024) FROM sys.master_files WHERE DB_NAME(database_id) = DB.name AND type_desc = 'rows') AS [Data MB],
+ (SELECT COUNT(1) FROM sys.master_files WHERE DB_NAME(database_id) = DB.name AND type_desc = 'log') AS LogFiles,
+ (SELECT SUM((cast(size as bigint)*8)/1024) FROM sys.master_files WHERE DB_NAME(database_id) = DB.name AND type_desc = 'log') AS [Log MB],
+ user_access_desc AS [User access],
+ recovery_model_desc AS [Recovery model],
+ CASE compatibility_level
+ WHEN 60 THEN '60 (SQL Server 6.0)'
+ WHEN 65 THEN '65 (SQL Server 6.5)'
+ WHEN 70 THEN '70 (SQL Server 7.0)'
+ WHEN 80 THEN '80 (SQL Server 2000)'
+ WHEN 90 THEN '90 (SQL Server 2005)'
+ WHEN 100 THEN '100 (SQL Server 2008)'
+ WHEN 110 THEN '110 (SQL Server 2012)'
+ WHEN 120 THEN '120 (SQL Server 2014)'
+ WHEN 130 THEN '130 (SQL Server 2016)'
+ WHEN 140 THEN '140 (SQL Server 2017)'
+ WHEN 150 THEN '150 (SQL Server 2019)'
+ END AS [compatibility level],
+ CONVERT(VARCHAR(20), create_date, 103) + ' ' + CONVERT(VARCHAR(20), create_date, 108) AS [Creation date],
+ ISNULL((SELECT TOP 1
+ CASE type WHEN 'D' THEN 'Full' WHEN 'I' THEN 'Differential' WHEN 'L' THEN 'Transaction log' END + ' – ' +
+ LTRIM(ISNULL(STR(ABS(DATEDIFF(DAY, GETDATE(),backup_finish_date))) + ' days ago', 'NEVER')) + ' – ' +
+ CONVERT(VARCHAR(20), backup_start_date, 103) + ' ' + CONVERT(VARCHAR(20), backup_start_date, 108) + ' – ' +
+ CONVERT(VARCHAR(20), backup_finish_date, 103) + ' ' + CONVERT(VARCHAR(20), backup_finish_date, 108) +
+ ' (' + CAST(DATEDIFF(second, BK.backup_start_date,
+ BK.backup_finish_date) AS VARCHAR(4)) + ' '
+ + 'seconds)'
+ FROM msdb..backupset BK WHERE BK.database_name = DB.name ORDER BY backup_set_id DESC),'-') AS [Last backup],
+ CASE WHEN is_fulltext_enabled = 1 THEN 'Fulltext enabled' ELSE '' END AS [fulltext],
+ CASE WHEN is_auto_close_on = 1 THEN 'autoclose' ELSE '' END AS [autoclose],
+ page_verify_option_desc AS [page verify option],
+ CASE WHEN is_read_only = 1 THEN 'read only' ELSE '' END AS [read only],
+ CASE WHEN is_auto_shrink_on = 1 THEN 'autoshrink' ELSE '' END AS [autoshrink],
+ CASE WHEN is_auto_create_stats_on = 1 THEN 'auto create statistics' ELSE '' END AS [auto create statistics],
+ CASE WHEN is_auto_update_stats_on = 1 THEN 'auto update statistics' ELSE '' END AS [auto update statistics],
+ CASE WHEN is_in_standby = 1 THEN 'standby' ELSE '' END AS [standby],
+ CASE WHEN is_cleanly_shutdown = 1 THEN 'cleanly shutdown' ELSE '' END AS [cleanly shutdown]
+ FROM sys.databases DB
+ ORDER BY 6 desc--dbName, [Last backup] DESC, NAME
+
+
+
+if object_id('Tempdb..#tabelas') is not null drop table #tabelas
+
+;with table_space_usage (schema_name,table_Name,index_name,used,reserved,ind_rows,tbl_rows,type_Desc)
+AS(
+select s.name, o.name,coalesce(i.name,'heap'),p.used_page_Count*8,
+p.reserved_page_count*8, p.row_count ,
+case when i.index_id in (0,1) then p.row_count else 0 end, i.type_Desc
+from sys.dm_db_partition_stats p
+join sys.objects o on o.object_id = p.object_id
+join sys.schemas s on s.schema_id = o.schema_id
+left join sys.indexes i on i.object_id = p.object_id and i.index_id = p.index_id
+where o.type_desc = 'user_Table' and o.is_Ms_shipped = 0
+)
+
+select t.schema_name, t.table_Name,t.index_name,sum(t.used) as used_in_kb,
+sum(t.reserved) as reserved_in_kb,
+case grouping (t.index_name) when 0 then sum(t.ind_rows) else sum(t.tbl_rows) end as rows,type_Desc
+into #tabelas
+from table_space_usage t
+group by t.schema_name, t.table_Name,t.index_name,type_Desc
+with rollup
+order by grouping(t.schema_name),t.schema_name,grouping(t.table_Name),t.table_Name,
+grouping(t.index_name),t.index_name
+
+if object_id('Tempdb..#Resultado_Final') is not null drop table #Resultado_Final
+
+select schema_name, table_Name Name,sum(reserved_in_kb) [Reservado (KB)], sum(case when type_Desc in ('CLUSTERED','HEAP') then reserved_in_kb else 0 end) [Dados (KB)], 
+	sum(case when type_Desc in ('NONCLUSTERED') then reserved_in_kb else 0 end) [Indices (KB)],
+	max(rows) Qtd_Linhas		
+into #Resultado_Final
+from #tabelas
+where index_name is not null
+		and type_Desc is not null
+group by schema_name, table_Name
+--having sum(reserved_in_kb) > 10000
+order by 3 desc
+
+select * from #Resultado_Final 
+order by 5 desc
+
+
+
+DECLARE @Nm_Schema VARCHAR(100) = 'dbo', -- dbo
+		@Nm_Tabela VARCHAR(200) = 'Titulo' -- tbQueclink
+
+DECLARE @Nm_Parametro VARCHAR(300) = '' + @Nm_Schema + '.' + @Nm_Tabela + ''
+
+IF(OBJECT_ID('tempdb..#Temp_Helpindex') IS NOT NULL) DROP TABLE #Temp_Helpindex
+
+CREATE TABLE #Temp_Helpindex(
+	index_name VARCHAR(MAX), 
+	index_description VARCHAR(MAX), 
+	index_keys VARCHAR(MAX)
+)
+
+INSERT INTO #Temp_Helpindex(index_name, index_description, index_keys)
+EXEC sp_helpindex @Nm_Parametro
+
+
+IF(OBJECT_ID('tempdb..#Temp_Include') IS NOT NULL) DROP TABLE #Temp_Include
+
+select SCHEMA_NAME (o.SCHEMA_ID) SchemaName
+  ,o.name ObjectName,i.name IndexName
+  ,i.type_desc
+  ,LEFT(list, ISNULL(splitter-1,len(list))) Columns
+  , SUBSTRING(list, indCol.splitter+1, 1000) includedColumns--len(name) - splitter-1) columns
+  , COUNT(1)over (partition by o.object_id) qtd
+into #Temp_Include
+from sys.indexes i
+join sys.objects o on i.object_id= o.object_id
+cross apply (select NULLIF(charindex('|',indexCols.list),0) splitter , list
+             from (select cast((
+                          select case when sc.is_included_column = 1 and sc.ColPos= 1 then'|'else '' end +
+                                 case when sc.ColPos > 1 then ', ' else ''end + name
+                            from (select sc.is_included_column, index_column_id, name
+                                       , ROW_NUMBER()over (partition by sc.is_included_column
+                                                            order by sc.index_column_id)ColPos
+                                   from sys.index_columns  sc
+                                   join sys.columns        c on sc.object_id= c.object_id
+                                                            and sc.column_id = c.column_id
+                                  where sc.index_id= i.index_id
+                                    and sc.object_id= i.object_id) sc
+                   order by sc.is_included_column
+                           ,ColPos
+                     for xml path (''),type) as varchar(max)) list)indexCols) indCol
+where indCol.splitter is not null
+		and SCHEMA_NAME (o.SCHEMA_ID) = @Nm_Schema
+		and o.name = @Nm_Tabela
+order by 5
+
+IF(OBJECT_ID('tempdb..#Temp_Utilizacao') IS NOT NULL) DROP TABLE #Temp_Utilizacao
+
+select o.name, i.name Nm_Indice, SCHEMA_NAME(schema_id) Nm_Schema, s.user_seeks,s.user_scans,s.user_lookups, s.user_Updates, 
+		isnull(s.last_user_seek,isnull(s.last_user_scan,s.last_User_Lookup)) Ultimo_acesso,fill_factor
+into #Temp_Utilizacao
+from sys.dm_db_index_usage_stats s
+	 join sys.indexes i on i.object_id = s.object_id and i.index_id = s.index_id
+	 join sys.sysobjects o on i.object_id = o.id
+	 join sys.tables t on o.id = t.object_id
+where s.database_id = db_id()
+		and SCHEMA_NAME(schema_id) = @Nm_Schema
+		and o.name = @Nm_Tabela
+order by s.user_seeks desc--o.Name, SCHEMA_NAME(schema_id), i.name
+
+
+IF(OBJECT_ID('tempdb..#Temp_TamanhoIndices') IS NOT NULL) DROP TABLE #Temp_TamanhoIndices
+
+SELECT i.[name] AS IndexName
+    ,SUM(s.[used_page_count]) * 8 AS IndexSizeKB
+into #Temp_TamanhoIndices
+FROM sys.dm_db_partition_stats AS s
+INNER JOIN sys.indexes AS i ON s.[object_id] = i.[object_id]
+    AND s.[index_id] = i.[index_id]
+	join sysobjects o ON i.[object_id] = o .id
+where o.name = @Nm_Tabela
+GROUP BY i.[name]
+ORDER BY 2 desc
+
+
+IF(OBJECT_ID('tempdb..#Temp_Compression') IS NOT NULL) DROP TABLE #Temp_Compression
+
+select i.name,data_compression_desc 
+into #Temp_Compression
+FROM [sys].[partitions] AS [p]
+INNER JOIN sys.tables AS [t] 
+     ON [t].[object_id] = [p].[object_id]
+INNER JOIN sys.indexes AS [i] 
+     ON [i].[object_id] = [p].[object_id] AND i.index_id = p.index_id
+INNER JOIN sys.schemas AS [s]
+   ON [t].[schema_id] = [s].[schema_id]
+where t.name = @Nm_Tabela
+
+
+
+Select distinct B.index_name, B.index_description,B.index_keys,C.includedColumns,A.user_seeks,A.user_scans,A.user_Updates,A.Ultimo_acesso,A.fill_factor,D.IndexSizeKB,E.data_compression_desc,
+	'alter index '+B.index_name+ ' on '+@Nm_Tabela+' REBUILD with(FILLFACTOR=90,DATA_COMPRESSION=PAGE,ONLINE=ON)'
+from  #Temp_Helpindex B 
+	left join #Temp_Include C on B.index_name = C.IndexName collate Latin1_General_BIN
+	left join #Temp_Utilizacao A on  B.index_name = A.Nm_Indice  collate Latin1_General_BIN
+	left join #Temp_TamanhoIndices D on B.index_name = D.IndexName collate Latin1_General_BIN
+	left join #Temp_Compression E on B.index_name = E.name collate Latin1_General_BIN
+where B.index_description <> 'nonclustered, hypothetical'
+--order by 10--B.index_keys,A.user_seeks desc
+order by B.index_keys,C.includedColumns,A.user_seeks desc
+
+----------------------------
+
+SELECT DB_Name() AS dbName,
+obj.name as objectname,
+ind.name as indexname,
+ind.fill_factor,
+obj.index_id as indexid,
+count(*) as cached_pages_count,
+(count(*) * 8) as kb_cached,
+(count(*) * 8) / 1024. as mb_cached,
+(SUM(CONVERT(float, free_space_in_bytes)) / 1024.) / 1024. AS Free_Space_MB
+FROM sys.dm_os_buffer_descriptors as bd
+INNER JOIN (SELECT object_id as objectid,
+object_name(object_id) as name,
+index_id,
+allocation_unit_id
+FROM sys.allocation_units as au
+INNER JOIN sys.partitions as p
+ON au.container_id = p.hobt_id
+AND (au.type = 1 OR au.type = 3)
+UNION ALL
+SELECT object_id as objectid,
+object_name(object_id) as name,
+index_id,
+allocation_unit_id
+FROM sys.allocation_units as au
+INNER JOIN sys.partitions as p
+ON au.container_id = p.partition_id
+AND au.type = 2) as obj
+ON bd.allocation_unit_id = obj.allocation_unit_id
+LEFT OUTER JOIN sys.indexes ind
+ON obj.objectid = ind.object_id
+AND obj.index_id = ind.index_id
+WHERE bd.database_id = db_id()
+AND bd.page_type in ('data_page', 'index_page')
+GROUP BY obj.name,
+ind.name,
+obj.index_id,
+ind.fill_factor
+ORDER BY cached_pages_count DESC
+
+---------------
+
+SELECT SERVERPROPERTY('ErrorLogFileName')
+
+
+----------------------------
+--memoria por base
+SELECT  CASE database_id
+          WHEN 32767 THEN 'ResourceDb'
+          ELSE DB_NAME(database_id)
+        END AS database_name ,
+        COUNT(*) AS cached_pages_count ,
+        COUNT(*) * .0078125 AS cached_megabytes /* Each page is 8kb, which is .0078125 of an MB */
+FROM    sys.dm_os_buffer_descriptors
+GROUP BY DB_NAME(database_id) ,
+        database_id
+ORDER BY cached_pages_count DESC ;
+
+
+SELECT cntr_value AS 'Page Life Expectancy'
+FROM sys.dm_os_performance_counters
+WHERE counter_name = 'Page life expectancy'
+
+
+USE master
+GO
+SELECT  'kill '+cast(A.session_id  as varchar(50)),cast(A.session_id  as varchar(50)) ,CAST(DATEDIFF(HOUR, B.start_time, GETDATE()) / 86400 AS VARCHAR)
+        + 'd '
+        + CAST(( DATEDIFF(SECOND, B.start_time, GETDATE()) / 3600 ) % 24 AS VARCHAR)
+        + 'h '
+        + CAST(( DATEDIFF(SECOND, B.start_time, GETDATE()) / 60 ) % 60 AS VARCHAR)
+        + 'm '
+        + CAST(DATEDIFF(SECOND, B.start_time, GETDATE()) % 60 AS VARCHAR)
+        + 's' Duração ,
+        A.session_id AS Sid ,
+        A.status ,
+        login_name ,
+        B.start_time ,
+        B.command ,
+        B.percent_complete ,
+        B.last_wait_type,
+        D.text ,
+        DB_NAME(CAST(B.database_id AS VARCHAR)) NmDB ,
+        C.last_read ,
+        C.last_write ,
+        program_name ,
+        login_time
+FROM    sys.dm_exec_sessions A
+        JOIN sys.dm_exec_requests B ON A.session_id = B.session_id
+        JOIN sys.dm_exec_connections C ON B.session_id = C.session_id
+        CROSS APPLY sys.dm_exec_sql_text(C.most_recent_sql_handle) D
+WHERE   /*A.status = 'running' and */
+        A.session_id > 50
+        AND A.session_id <> @@spid
+ORDER BY B.start_time
+
+
+--- Parametros da Instancia
+
+SELECT name,
+       value,
+       description
+FROM sys.configurations
+WHERE name IN ( 'max degree of parallelism', 'cost threshold for parallelism', 'min server memory (MB)',
+                'max server memory (MB)'
+              )
+ORDER BY name;
+GO
+
+
+-- Verifica IO
+
+SELECT  DB_NAME(fs.database_id) AS [Database Name] ,
+        mf.physical_name ,
+        io_stall_read_ms ,
+        num_of_reads ,
+        CAST(io_stall_read_ms / ( 1.0 + num_of_reads ) AS NUMERIC(10, 1)) AS [avg_read_stall_ms] ,
+        io_stall_write_ms ,
+        num_of_writes ,
+        CAST(io_stall_write_ms / ( 1.0 + num_of_writes ) AS NUMERIC(10, 1)) AS [avg_write_stall_ms] ,
+        io_stall_read_ms + io_stall_write_ms AS [io_stalls] ,
+        num_of_reads + num_of_writes AS [total_io] ,
+        CAST(( io_stall_read_ms + io_stall_write_ms ) / ( 1.0 + num_of_reads
+                                                          + num_of_writes ) AS NUMERIC(10,
+                                                              1)) AS [avg_io_stall_ms]
+FROM sys.dm_io_virtual_file_stats(NULL, NULL) AS fs
+INNER JOIN sys.master_files AS mf WITH ( NOLOCK ) ON fs.database_id = mf.database_id AND fs.[file_id] = mf.[file_id]
+ORDER BY avg_io_stall_ms DESC
+
+
+-- confere a fila de disco no momento da conexão. Somente para alertar o cliente. Náo precisa colocar na planilha.
+/*
+
+SELECT DB_NAME(mf.database_id) AS [Database]
+		, mf.physical_name
+		, r.io_pending
+		, r.io_pending_ms_ticks
+		, r.io_type
+		, fs.num_of_reads
+		, fs.num_of_writes
+		, GETDATE()
+FROM sys.dm_io_pending_io_requests AS r
+INNER JOIN sys.dm_io_virtual_file_stats(null,null) AS fs
+ON r.io_handle = fs.file_handle 
+INNER JOIN sys.master_files AS mf
+ON fs.database_id = mf.database_id
+AND fs.file_id = mf.file_id
+ORDER BY r.io_pending, r.io_pending_ms_ticks DESC
+
+*/
+
+
+--------------------------------------------------------
+-- 9) Consumo de CPU
+--------------------------------------------------------
+
+-- Get CPU Utilization History for last 256 minutes (in one minute intervals)  (Query 46) (CPU Utilization History)
+DECLARE @ts_now bigint = (SELECT cpu_ticks/(cpu_ticks/ms_ticks) FROM sys.dm_os_sys_info WITH (NOLOCK)); 
+
+SELECT TOP(256) SQLProcessUtilization AS [SQL Server Process CPU Utilization], 
+               SystemIdle AS [System Idle Process], 
+               100 - SystemIdle - SQLProcessUtilization AS [Other Process CPU Utilization], 
+               DATEADD(ms, -1 * (@ts_now - [timestamp]), GETDATE()) AS [Event Time] 
+FROM (SELECT record.value('(./Record/@id)[1]', 'int') AS record_id, 
+			record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int') 
+			AS [SystemIdle], 
+			record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') 
+			AS [SQLProcessUtilization], [timestamp] 
+	  FROM (SELECT [timestamp], CONVERT(xml, record) AS [record] 
+			FROM sys.dm_os_ring_buffers WITH (NOLOCK)
+			WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' 
+			AND record LIKE N'%<SystemHealth>%') AS x) AS y 
+ORDER BY record_id DESC OPTION (RECOMPILE);
+
+
+
+11) WAITS
+
+-- Last updated September 25, 2018
+WITH [Waits] AS
+    (SELECT
+        [wait_type],
+        [wait_time_ms] / 1000.0 AS [WaitS],
+        ([wait_time_ms] - [signal_wait_time_ms]) / 1000.0 AS [ResourceS],
+        [signal_wait_time_ms] / 1000.0 AS [SignalS],
+        [waiting_tasks_count] AS [WaitCount],
+        100.0 * [wait_time_ms] / SUM ([wait_time_ms]) OVER() AS [Percentage],
+        ROW_NUMBER() OVER(ORDER BY [wait_time_ms] DESC) AS [RowNum]
+    FROM sys.dm_os_wait_stats
+    WHERE [wait_type] NOT IN (
+        -- These wait types are almost 100% never a problem and so they are
+        -- filtered out to avoid them skewing the results. Click on the URL
+        -- for more information.
+        N'BROKER_EVENTHANDLER', -- https://www.sqlskills.com/help/waits/BROKER_EVENTHANDLER
+        N'BROKER_RECEIVE_WAITFOR', -- https://www.sqlskills.com/help/waits/BROKER_RECEIVE_WAITFOR
+        N'BROKER_TASK_STOP', -- https://www.sqlskills.com/help/waits/BROKER_TASK_STOP
+        N'BROKER_TO_FLUSH', -- https://www.sqlskills.com/help/waits/BROKER_TO_FLUSH
+        N'BROKER_TRANSMITTER', -- https://www.sqlskills.com/help/waits/BROKER_TRANSMITTER
+        N'CHECKPOINT_QUEUE', -- https://www.sqlskills.com/help/waits/CHECKPOINT_QUEUE
+        N'CHKPT', -- https://www.sqlskills.com/help/waits/CHKPT
+        N'CLR_AUTO_EVENT', -- https://www.sqlskills.com/help/waits/CLR_AUTO_EVENT
+        N'CLR_MANUAL_EVENT', -- https://www.sqlskills.com/help/waits/CLR_MANUAL_EVENT
+        N'CLR_SEMAPHORE', -- https://www.sqlskills.com/help/waits/CLR_SEMAPHORE
+        N'CXCONSUMER', -- https://www.sqlskills.com/help/waits/CXCONSUMER
+ 
+        -- Maybe comment these four out if you have mirroring issues
+        N'DBMIRROR_DBM_EVENT', -- https://www.sqlskills.com/help/waits/DBMIRROR_DBM_EVENT
+        N'DBMIRROR_EVENTS_QUEUE', -- https://www.sqlskills.com/help/waits/DBMIRROR_EVENTS_QUEUE
+        N'DBMIRROR_WORKER_QUEUE', -- https://www.sqlskills.com/help/waits/DBMIRROR_WORKER_QUEUE
+        N'DBMIRRORING_CMD', -- https://www.sqlskills.com/help/waits/DBMIRRORING_CMD
+ 
+        N'DIRTY_PAGE_POLL', -- https://www.sqlskills.com/help/waits/DIRTY_PAGE_POLL
+        N'DISPATCHER_QUEUE_SEMAPHORE', -- https://www.sqlskills.com/help/waits/DISPATCHER_QUEUE_SEMAPHORE
+        N'EXECSYNC', -- https://www.sqlskills.com/help/waits/EXECSYNC
+        N'FSAGENT', -- https://www.sqlskills.com/help/waits/FSAGENT
+        N'FT_IFTS_SCHEDULER_IDLE_WAIT', -- https://www.sqlskills.com/help/waits/FT_IFTS_SCHEDULER_IDLE_WAIT
+        N'FT_IFTSHC_MUTEX', -- https://www.sqlskills.com/help/waits/FT_IFTSHC_MUTEX
+ 
+        -- Maybe comment these six out if you have AG issues
+        N'HADR_CLUSAPI_CALL', -- https://www.sqlskills.com/help/waits/HADR_CLUSAPI_CALL
+        N'HADR_FILESTREAM_IOMGR_IOCOMPLETION', -- https://www.sqlskills.com/help/waits/HADR_FILESTREAM_IOMGR_IOCOMPLETION
+        N'HADR_LOGCAPTURE_WAIT', -- https://www.sqlskills.com/help/waits/HADR_LOGCAPTURE_WAIT
+        N'HADR_NOTIFICATION_DEQUEUE', -- https://www.sqlskills.com/help/waits/HADR_NOTIFICATION_DEQUEUE
+        N'HADR_TIMER_TASK', -- https://www.sqlskills.com/help/waits/HADR_TIMER_TASK
+        N'HADR_WORK_QUEUE', -- https://www.sqlskills.com/help/waits/HADR_WORK_QUEUE
+ 
+        N'KSOURCE_WAKEUP', -- https://www.sqlskills.com/help/waits/KSOURCE_WAKEUP
+        N'LAZYWRITER_SLEEP', -- https://www.sqlskills.com/help/waits/LAZYWRITER_SLEEP
+        N'LOGMGR_QUEUE', -- https://www.sqlskills.com/help/waits/LOGMGR_QUEUE
+        N'MEMORY_ALLOCATION_EXT', -- https://www.sqlskills.com/help/waits/MEMORY_ALLOCATION_EXT
+        N'ONDEMAND_TASK_QUEUE', -- https://www.sqlskills.com/help/waits/ONDEMAND_TASK_QUEUE
+        N'PARALLEL_REDO_DRAIN_WORKER', -- https://www.sqlskills.com/help/waits/PARALLEL_REDO_DRAIN_WORKER
+        N'PARALLEL_REDO_LOG_CACHE', -- https://www.sqlskills.com/help/waits/PARALLEL_REDO_LOG_CACHE
+        N'PARALLEL_REDO_TRAN_LIST', -- https://www.sqlskills.com/help/waits/PARALLEL_REDO_TRAN_LIST
+        N'PARALLEL_REDO_WORKER_SYNC', -- https://www.sqlskills.com/help/waits/PARALLEL_REDO_WORKER_SYNC
+        N'PARALLEL_REDO_WORKER_WAIT_WORK', -- https://www.sqlskills.com/help/waits/PARALLEL_REDO_WORKER_WAIT_WORK
+        N'PREEMPTIVE_XE_GETTARGETSTATE', -- https://www.sqlskills.com/help/waits/PREEMPTIVE_XE_GETTARGETSTATE
+        N'PWAIT_ALL_COMPONENTS_INITIALIZED', -- https://www.sqlskills.com/help/waits/PWAIT_ALL_COMPONENTS_INITIALIZED
+        N'PWAIT_DIRECTLOGCONSUMER_GETNEXT', -- https://www.sqlskills.com/help/waits/PWAIT_DIRECTLOGCONSUMER_GETNEXT
+        N'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP', -- https://www.sqlskills.com/help/waits/QDS_PERSIST_TASK_MAIN_LOOP_SLEEP
+        N'QDS_ASYNC_QUEUE', -- https://www.sqlskills.com/help/waits/QDS_ASYNC_QUEUE
+        N'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP',
+            -- https://www.sqlskills.com/help/waits/QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP
+        N'QDS_SHUTDOWN_QUEUE', -- https://www.sqlskills.com/help/waits/QDS_SHUTDOWN_QUEUE
+        N'REDO_THREAD_PENDING_WORK', -- https://www.sqlskills.com/help/waits/REDO_THREAD_PENDING_WORK
+        N'REQUEST_FOR_DEADLOCK_SEARCH', -- https://www.sqlskills.com/help/waits/REQUEST_FOR_DEADLOCK_SEARCH
+        N'RESOURCE_QUEUE', -- https://www.sqlskills.com/help/waits/RESOURCE_QUEUE
+        N'SERVER_IDLE_CHECK', -- https://www.sqlskills.com/help/waits/SERVER_IDLE_CHECK
+        N'SLEEP_BPOOL_FLUSH', -- https://www.sqlskills.com/help/waits/SLEEP_BPOOL_FLUSH
+        N'SLEEP_DBSTARTUP', -- https://www.sqlskills.com/help/waits/SLEEP_DBSTARTUP
+        N'SLEEP_DCOMSTARTUP', -- https://www.sqlskills.com/help/waits/SLEEP_DCOMSTARTUP
+        N'SLEEP_MASTERDBREADY', -- https://www.sqlskills.com/help/waits/SLEEP_MASTERDBREADY
+        N'SLEEP_MASTERMDREADY', -- https://www.sqlskills.com/help/waits/SLEEP_MASTERMDREADY
+        N'SLEEP_MASTERUPGRADED', -- https://www.sqlskills.com/help/waits/SLEEP_MASTERUPGRADED
+        N'SLEEP_MSDBSTARTUP', -- https://www.sqlskills.com/help/waits/SLEEP_MSDBSTARTUP
+        N'SLEEP_SYSTEMTASK', -- https://www.sqlskills.com/help/waits/SLEEP_SYSTEMTASK
+        N'SLEEP_TASK', -- https://www.sqlskills.com/help/waits/SLEEP_TASK
+        N'SLEEP_TEMPDBSTARTUP', -- https://www.sqlskills.com/help/waits/SLEEP_TEMPDBSTARTUP
+        N'SNI_HTTP_ACCEPT', -- https://www.sqlskills.com/help/waits/SNI_HTTP_ACCEPT
+        N'SOS_WORK_DISPATCHER', -- https://www.sqlskills.com/help/waits/SOS_WORK_DISPATCHER
+        N'SP_SERVER_DIAGNOSTICS_SLEEP', -- https://www.sqlskills.com/help/waits/SP_SERVER_DIAGNOSTICS_SLEEP
+        N'SQLTRACE_BUFFER_FLUSH', -- https://www.sqlskills.com/help/waits/SQLTRACE_BUFFER_FLUSH
+        N'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', -- https://www.sqlskills.com/help/waits/SQLTRACE_INCREMENTAL_FLUSH_SLEEP
+        N'SQLTRACE_WAIT_ENTRIES', -- https://www.sqlskills.com/help/waits/SQLTRACE_WAIT_ENTRIES
+        N'WAIT_FOR_RESULTS', -- https://www.sqlskills.com/help/waits/WAIT_FOR_RESULTS
+        N'WAITFOR', -- https://www.sqlskills.com/help/waits/WAITFOR
+        N'WAITFOR_TASKSHUTDOWN', -- https://www.sqlskills.com/help/waits/WAITFOR_TASKSHUTDOWN
+        N'WAIT_XTP_RECOVERY', -- https://www.sqlskills.com/help/waits/WAIT_XTP_RECOVERY
+        N'WAIT_XTP_HOST_WAIT', -- https://www.sqlskills.com/help/waits/WAIT_XTP_HOST_WAIT
+        N'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', -- https://www.sqlskills.com/help/waits/WAIT_XTP_OFFLINE_CKPT_NEW_LOG
+        N'WAIT_XTP_CKPT_CLOSE', -- https://www.sqlskills.com/help/waits/WAIT_XTP_CKPT_CLOSE
+        N'XE_DISPATCHER_JOIN', -- https://www.sqlskills.com/help/waits/XE_DISPATCHER_JOIN
+        N'XE_DISPATCHER_WAIT', -- https://www.sqlskills.com/help/waits/XE_DISPATCHER_WAIT
+        N'XE_TIMER_EVENT' -- https://www.sqlskills.com/help/waits/XE_TIMER_EVENT
+        )
+    AND [waiting_tasks_count] > 0
+    )
+SELECT
+    MAX ([W1].[wait_type]) AS [WaitType],
+    CAST (MAX ([W1].[WaitS]) AS DECIMAL (16,2)) AS [Wait_S],
+    CAST (MAX ([W1].[ResourceS]) AS DECIMAL (16,2)) AS [Resource_S],
+    CAST (MAX ([W1].[SignalS]) AS DECIMAL (16,2)) AS [Signal_S],
+    MAX ([W1].[WaitCount]) AS [WaitCount],
+    CAST (MAX ([W1].[Percentage]) AS DECIMAL (5,2)) AS [Percentage],
+    CAST ((MAX ([W1].[WaitS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS [AvgWait_S],
+    CAST ((MAX ([W1].[ResourceS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS [AvgRes_S],
+    CAST ((MAX ([W1].[SignalS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS [AvgSig_S],
+    CAST ('https://www.sqlskills.com/help/waits/' + MAX ([W1].[wait_type]) as XML) AS [Help/Info URL]
+FROM [Waits] AS [W1]
+INNER JOIN [Waits] AS [W2] ON [W2].[RowNum] <= [W1].[RowNum]
+GROUP BY [W1].[RowNum]
+HAVING SUM ([W2].[Percentage]) - MAX( [W1].[Percentage] ) < 95; -- percentage threshold
+GO
+
+
