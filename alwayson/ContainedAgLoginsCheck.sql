@@ -11,7 +11,7 @@ DECLARE
 
 DROP TABLE IF EXISTS #AgList;
 
--- Get all contained ag current server is an replica belongs to...
+-- Get all contained ag 
 select 
 	 AgName				= ag.name 
 	 ,PrimaryReplica	= r.replica_server_name
