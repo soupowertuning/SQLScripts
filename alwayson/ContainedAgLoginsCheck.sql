@@ -2,6 +2,7 @@
   Este script foi criado como uma POC no vídeo da PowerTuning sobre Contained Availability Groups
   Ele usa o linkd server para conectar no ambiente de cada AG e exibe em quais ambientes um login existe ou não existe
   O script é livre para usar, mas, lembre-se de manter os créditos para a PowerTuning.
+  Vídeo: https://www.youtube.com/watch?v=8uCDl1zIrBY
 */
 
 DECLARE
@@ -36,10 +37,12 @@ declare
 	,@Seq int =0
 	,@col_AgName nvarchar(300)
 	,@AgMaster nvarchar(200)
+	,@ServerName sysname
 
 set @exec = @LinkedName+'...sp_executesql';
 
 set @Seq = 0;
+set @ServerName = @@SERVERNAME;
 
 
 DROP TABLE IF EXISTS #Logins;
@@ -84,7 +87,7 @@ BEGIN
 		@server = @LinkedName, 
 		@srvproduct=N'',
 		@provider=N'SQLNCLI',
-		@datasrc=N'SQL1',
+		@datasrc=@ServerName,
 		@catalog=@AgMaster
 		,@provstr='APP=ScriptContainedAgCheck'
 
